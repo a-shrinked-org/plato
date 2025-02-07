@@ -15,24 +15,64 @@ handle_error() {
 
 trap 'handle_error ${LINENO}' ERR
 
-# Function for retrying commands with exponential backoff
+# Function for retrying commands with exponential backoff and content validation
 get_with_retry() {
     local cmd="$1"
     local error_msg="$2"
+    local content_type="$3"  # "title", "abstract", etc.
     local retries=0
     local output=""
+    local max_wait=30  # Maximum wait time in seconds
     
     while ((retries < MAX_RETRIES)); do
-        output=$(eval "$cmd" 2>/dev/null || true)
-        if [ -n "$output" ] && [ "$output" != "Missing Title" ] && [ "$output" != "Missing Summary" ]; then
-            echo "$output"
-            return 0
+        # First check if transcription/indexing is complete
+        if ! plato --status "$URL" | grep -q "complete"; then
+            echo "Content still processing, waiting..." >&2
+            sleep $((min(RETRY_DELAY ** retries, max_wait)))
+            ((retries++))
+            continue
         fi
+        
+        output=$(eval "$cmd" 2>/dev/null || true)
+        
+        # Content-specific validation
+        case "$content_type" in
+            "title")
+                if [ -n "$output" ] && [ "$output" != "Missing Title" ]; then
+                    echo "$output"
+                    return 0
+                fi
+                ;;
+            "abstract")
+                if [ -n "$output" ] && [ "$output" != "Missing Summary" ]; then
+                    echo "$output"
+                    return 0
+                fi
+                ;;
+            *)
+                if [ -n "$output" ]; then
+                    echo "$output"
+                    return 0
+                fi
+                ;;
+        esac
+        
         ((retries++))
-        echo "Attempt $retries failed, retrying in $((RETRY_DELAY ** retries)) seconds..." >&2
-        sleep $((RETRY_DELAY ** retries))
+        echo "Attempt $retries failed for $content_type, retrying in $((RETRY_DELAY ** retries)) seconds..." >&2
+        sleep $((min(RETRY_DELAY ** retries, max_wait)))
     done
-    echo "$error_msg"
+    
+    # If we failed to get content, try to generate it
+    case "$content_type" in
+        "title")
+            output=$(plato --generate-title "$URL" --lang "$LANG" 2>/dev/null || echo "$error_msg")
+            ;;
+        "abstract")
+            output=$(plato --generate-summary "$URL" --lang "$LANG" 2>/dev/null || echo "$error_msg")
+            ;;
+    esac
+    
+    echo "${output:-$error_msg}"
     return 1
 }
 
@@ -126,12 +166,24 @@ fi
 
 echo "Fetching title, abstract, passages, and references..."
 
+# Check if file is still processing
+echo "Checking content processing status..."
+if ! plato --status "$URL" | grep -q "complete"; then
+    echo "Waiting for content processing to complete..."
+    sleep 5
+fi
+
 # Get content with retries and sanitization
-TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG'" "Missing Title")
-ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG'" "Missing Summary")
-PASSAGES=$(get_with_retry "plato --passages --chapters --inline-references '$URL' --lang '$LANG'" "No content available")
-REFERENCES=$(get_with_retry "plato --references '$URL' --lang '$LANG'" "No references available")
-CHAPTERS=$(get_with_retry "plato --chapters '$URL' --lang '$LANG'" "No chapters available")
+echo "Retrieving title..."
+TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG'" "Generated Title" "title")
+echo "Retrieving abstract..."
+ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG'" "Generated Summary" "abstract")
+echo "Retrieving passages..."
+PASSAGES=$(get_with_retry "plato --passages --chapters --inline-references '$URL' --lang '$LANG'" "No content available" "passages")
+echo "Retrieving references..."
+REFERENCES=$(get_with_retry "plato --references '$URL' --lang '$LANG'" "No references available" "references")
+echo "Retrieving chapters..."
+CHAPTERS=$(get_with_retry "plato --chapters '$URL' --lang '$LANG'" "No chapters available" "chapters")
 
 # Sanitize outputs
 TITLE=$(sanitize_output "$TITLE" "Missing Title")

@@ -6,6 +6,22 @@ from tqdm import tqdm  # type: ignore
 from platogram.llm import LanguageModel
 from platogram.types import Content, SpeechEvent
 
+MAX_RETRIES = 3
+RETRY_DELAY = 2
+
+def get_with_retry(func: Callable, *args, **kwargs) -> any:
+    """Generic retry mechanism for LLM functions"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            result = func(*args, **kwargs)
+            if result and not (isinstance(result, tuple) and any(x in str(x) for x in result for x in ["Missing", "Unknown"])):
+                return result
+        except Exception as e:
+            if attempt == MAX_RETRIES - 1:
+                raise e
+        time.sleep(RETRY_DELAY * (2 ** attempt))
+    return None
+
 
 def remove_markers(text: str) -> str:
     return re.sub(r"(【\d+】)", r" ", text)
@@ -206,34 +222,91 @@ def get_paragraphs(
     return paragraphs
 
 
-def index(
-    transcript: list[SpeechEvent],
-    llm: LanguageModel,
-    max_tokens: int = 4096,
-    temperature: float = 0.5,
-    chunk_size: int = 2048,
-    lang: str | None = None,
-) -> Content:
-    text = render({i: event.text for i, event in enumerate(transcript)})
-    paragraphs = get_paragraphs(text, llm, max_tokens, temperature, chunk_size, lang=lang)
-
-    try:
-        title, summary = llm.get_meta(paragraphs, lang=lang)
-    except Exception:
-        title, summary = "Missing Title", "Missing Summary"
+def generate_title_and_summary(
+        llm: LanguageModel,
+        paragraphs: list[str],
+        lang: str | None = None
+    ) -> Tuple[str, str]:
+        """Generate title and summary with retries and validation"""
+        title, summary = get_with_retry(llm.get_meta, paragraphs, lang=lang)
+        
+        # Additional validation
+        if not title or len(title.strip()) < 3:
+            # Try generating just title
+            title = get_with_retry(llm.generate_title, paragraphs, lang=lang)
+        
+        if not summary or len(summary.strip()) < 10:
+            # Try generating just summary
+            summary = get_with_retry(llm.generate_summary, paragraphs, lang=lang)
+        
+        # Final fallback
+        title = title if title else "Generated Title"
+        summary = summary if summary else "Generated Summary"
+        
+        return title, summary
     
-    try:
-        chapters = llm.get_chapters(paragraphs, lang=lang)
-    except Exception:
-        chapters = {0: "All Content"}
-
-    return Content(
-        title=title,
-        summary=summary,
-        passages=paragraphs,  # NOTE: we should experiment and settle on passage vs. paragraph
-        transcript=transcript,
-        chapters=chapters,
-    )
+    def generate_chapters(
+        llm: LanguageModel,
+        paragraphs: list[str],
+        lang: str | None = None
+    ) -> Dict[int, str]:
+        """Generate chapters with retries and validation"""
+        chapters = get_with_retry(llm.get_chapters, paragraphs, lang=lang)
+        
+        if not chapters or len(chapters) < 1:
+            # Try alternative chapter generation
+            try:
+                # Attempt to generate chapters based on paragraph content
+                chapters = {}
+                current_chapter = None
+                chapter_index = 0
+                
+                for i, para in enumerate(paragraphs):
+                    # Look for chapter-like headings
+                    if re.match(r'^#+ |^Chapter|^Section', para, re.I):
+                        chapter_index = i
+                        chapters[chapter_index] = para.strip('#').strip()
+                
+                if not chapters:
+                    # If no chapters found, create basic structure
+                    chunk_size = max(1, len(paragraphs) // 3)
+                    for i in range(0, len(paragraphs), chunk_size):
+                        chapters[i] = f"Part {i//chunk_size + 1}"
+                        
+            except Exception:
+                chapters = {0: "Main Content"}
+        
+        # Ensure we have at least one chapter
+        if not chapters:
+            chapters = {0: "Main Content"}
+            
+        return chapters
+    
+    def index(
+        transcript: list[SpeechEvent],
+        llm: LanguageModel,
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        chunk_size: int = 2048,
+        lang: str | None = None,
+    ) -> Content:
+        """Index content with improved metadata generation"""
+        text = render({i: event.text for i, event in enumerate(transcript)})
+        paragraphs = get_paragraphs(text, llm, max_tokens, temperature, chunk_size, lang=lang)
+    
+        # Generate title and summary with retries
+        title, summary = generate_title_and_summary(llm, paragraphs, lang=lang)
+        
+        # Generate chapters with retries
+        chapters = generate_chapters(llm, paragraphs, lang=lang)
+    
+        return Content(
+            title=title,
+            summary=summary,
+            passages=paragraphs,
+            transcript=transcript,
+            chapters=chapters,
+        )
 
 
 rewrite_examples = {
