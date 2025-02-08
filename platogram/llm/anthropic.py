@@ -41,6 +41,7 @@ class Model:
     def count_tokens(self, text: str) -> int:
     """Count tokens for a given text using Anthropic's API"""
     result = self.client.messages.count_tokens(
+        model=self.model,
         messages=[{
             "role": "user", 
             "content": text
