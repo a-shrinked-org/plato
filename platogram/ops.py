@@ -1,31 +1,41 @@
 import re
 import time
-from typing import Callable, Tuple, Dict
-from tqdm import tqdm
+from typing import Callable
+
+from tqdm import tqdm  # type: ignore
 
 from platogram.llm import LanguageModel
 from platogram.types import Content, SpeechEvent
 
-MAX_RETRIES = 3
-RETRY_DELAY = 2
+def remove_markers(text: str) -> str:
+    return re.sub(r"(【\d+】)", r" ", text)
 
-def get_with_retry(func: Callable, *args, **kwargs) -> any:
-    """Generic retry mechanism for LLM functions"""
-    for attempt in range(MAX_RETRIES):
-        try:
-            result = func(*args, **kwargs)
-            if result and not (isinstance(result, tuple) and any(x in str(x) for x in result for x in ["Missing", "Unknown"])):
-                return result
-        except Exception as e:
-            if attempt == MAX_RETRIES - 1:
-                raise e
-        time.sleep(RETRY_DELAY * (2 ** attempt))
-    return None
 
 def parse(text_with_markers: str, marker: str = r"(【\d+】)") -> dict[int, str]:
     """
     Parses a string containing text segments separated by numeric markers.
+
+    The input string should have the format:
+    "text【number】text【number】...【number】"
+    where 【number】 is a numeric value enclosed in square brackets.
+
+    Args:
+        text_with_markers: The input string containing text segments and markers.
+        marker: The regular expression pattern for the markers. Default is r'(【\d+】)'.
+
+    Returns:
+        A dictionary where the keys are the numeric markers and the values are the text segments associated with each marker.
+
+        For example, the input string "hello【1】world【2】!【1】" would return:
+        {
+            1: "hello!",
+            2: "world"
+        }
+
+    Raises:
+        ValueError: If the input string is empty, does not contain any valid markers, or does not end with a valid marker.
     """
+
     def is_marker(segment: str) -> bool:
         return bool(re.match(marker, segment))
 
@@ -33,11 +43,16 @@ def parse(text_with_markers: str, marker: str = r"(【\d+】)") -> dict[int, str
         raise ValueError("Input string cannot be empty.")
 
     segments = re.split(marker, text_with_markers)
+
     if not any(is_marker(segment) for segment in segments):
-        raise ValueError(f"Input string does not contain any valid markers. {text_with_markers}")
+        raise ValueError(
+            f"Input string does not contain any valid markers. {text_with_markers}"
+        )
 
     if segments[-1]:
-        raise ValueError(f"Input string must end with a valid marker. {text_with_markers}")
+        raise ValueError(
+            f"Input string must end with a valid marker. {text_with_markers}"
+        )
 
     relevant_segment_dict: dict[int, str] = {}
     text = ""
@@ -50,126 +65,192 @@ def parse(text_with_markers: str, marker: str = r"(【\d+】)") -> dict[int, str
             text += segment
     return relevant_segment_dict
 
-def render(segments: dict[int, str], marker_fn: Callable[[int], str] = lambda x: f"【{x}】") -> str:
-    """Renders a dictionary of text segments into a single string with numeric markers."""
+
+def render(
+    segments: dict[int, str], marker_fn: Callable[[int], str] = lambda x: f"【{x}】"
+) -> str:
+    """
+    Renders a dictionary of text segments into a single string with numeric markers.
+
+    The output string will have the format:
+    "text【number】text【number】...【number】"
+    where 【number】 is a numeric value enclosed in square brackets.
+
+    Args:
+        segments: A dictionary where the keys are the numeric markers and the values are the text segments associated with each marker.
+        marker: The regular expression pattern for the markers. Default is r'(【\d+】)'.
+
+    Returns:
+        A string containing text segments separated by numeric markers.
+
+        For example, the input dictionary {1: "hello!", 2: "world"} would return:
+        "hello【1】world【2】"
+    """
     return "".join([f"{text}{marker_fn(value)}" for value, text in segments.items()])
 
-def get_paragraphs(text: str, llm: LanguageModel, max_tokens: int, temperature: float, chunk_size: int, lang: str | None = None) -> list[str]:
-    """Gets paragraphs with proper chunking and retries"""
-    if not lang:
-        lang = "en"
 
-    # Add retries for getting paragraphs
-    for attempt in range(MAX_RETRIES):
-        try:
-            examples = {str(example["input"]): list(example["output"]) for example in rewrite_examples[lang]}
-            tail = ""
-            paragraphs = []
-            chunks = chunk_text(text, chunk_size, llm.count_tokens)
-            
-            with tqdm(total=len(chunks), initial=0) as pbar:
-                pbar.update(0)
-                for i, chunk in enumerate(chunks):
-                    chunk = tail + chunk
-                    base_marker = sorted(parse(chunk).keys())[0]
-                    content = render({marker - base_marker: text for marker, text in parse(chunk).items()})
+def chunk_text(
+    text_with_markers: str,
+    chunk_size: int,
+    token_count_fn: Callable[[str], int],
+    marker: str = r"(【\d+】)",
+) -> list[str]:
+    """
+    Splits a string containing text segments separated by numeric markers into chunks of a specified size.
 
-                    for paragraph in llm.get_paragraphs(content, examples, max_tokens=max_tokens, temperature=temperature, lang=lang):
-                        paragraphs.append(re.sub(r"【(\d+)】", 
-                            lambda match: f"【{int(match.group(1)) + base_marker}】", paragraph))
+    The input string should have the format:
+    "text【number】text【number】...【number】"
+    where 【number】 is a numeric value enclosed in square brackets.
 
-                    if i < len(chunks) - 1 and paragraphs:
-                        paragraphs.pop()
-                        while paragraphs and not re.findall(r"【(\d+)】", paragraphs[-1]):
-                            paragraphs.pop()
+    Args:
+        text_with_markers: The input string containing text segments and markers.
+        chunk_size: The desired maximum size of each chunk, in terms of the number of tokens.
+        token_count_fn: A function that takes a string and returns the number of tokens in it.
+        marker: The regular expression pattern for the markers. Default is r'(【\d+】)'.
 
-                    if len(paragraphs) > 1:
-                        markers = sorted([int(marker) for marker in re.findall(r"【(\d+)】", paragraphs[-1])])
-                        if markers:
-                            last_marker = markers[-1]
-                            tail = render({marker: text for marker, text in parse(chunk).items() if marker >= last_marker})
-                        else:
-                            tail = chunk
-                    else:
-                        tail = chunk
-                    pbar.update(1)
-
-            if paragraphs:
-                return paragraphs
-
-        except Exception as e:
-            if attempt == MAX_RETRIES - 1:
-                raise e
-            time.sleep(RETRY_DELAY * (2 ** attempt))
-
-    return []
-
-def chunk_text(text: str, chunk_size: int, token_count_fn: Callable[[str], int]) -> list[str]:
-    """Chunks text based on token count"""
-    segments = parse(text)
+    Returns:
+        A list of strings, where each string represents a chunk of the input text. The chunks are created by grouping
+        the text segments such that the total number of tokens in each chunk is as close as possible to the specified
+        chunk size, without exceeding it. The markers are preserved in the output chunks.
+    """
+    segments = parse(text_with_markers, marker)
     total_tokens = token_count_fn(render(segments))
     num_chunks = (total_tokens + chunk_size - 1) // chunk_size
     target_chunk_size = (total_tokens + num_chunks - 1) // num_chunks
 
     chunks = []
-    chunk_segments = {}
-    
+    chunk_segments: dict[int, str] = {}
     for key, segment in segments.items():
-        updated_segments = {**chunk_segments, key: segment}
-        if token_count_fn(render(updated_segments)) > target_chunk_size and chunk_segments:
+        updated_chunk_segments = {**chunk_segments, key: segment}
+        if (
+            token_count_fn(render(updated_chunk_segments)) > target_chunk_size
+            and chunk_segments
+        ):
             chunks.append(chunk_segments)
             chunk_segments = {key: segment}
         else:
-            chunk_segments = updated_segments
+            chunk_segments = updated_chunk_segments
 
     if chunk_segments:
         chunks.append(chunk_segments)
 
     return [render(chunk) for chunk in chunks]
 
-def index(transcript: list[SpeechEvent], llm: LanguageModel, max_tokens: int = 4096, 
-         temperature: float = 0.5, chunk_size: int = 2048, lang: str | None = None) -> Content:
+
+def get_paragraphs(
+    text: str,
+    llm: LanguageModel,
+    max_tokens: int,
+    temperature: float,
+    chunk_size: int,
+    lang: str | None = None,
+) -> list[str]:
+    if not lang:
+        lang = "en"
+
+    examples = {
+        str(example["input"]): list(example["output"]) for example in rewrite_examples[lang]
+    }
+    tail = ""
+    paragraphs = []
+    chunks = chunk_text(text, chunk_size, llm.count_tokens)
+    with tqdm(total=len(chunks), initial=0) as pbar:
+        pbar.update(0)
+        for i, chunk in enumerate(chunks):
+            chunk = tail + chunk
+
+            base_marker = sorted(parse(chunk).keys())[0]
+            content = render(
+                {marker - base_marker: text for marker, text in parse(chunk).items()}
+            )
+
+            # limit the number of output tokens to chunk size
+            for paragraph in llm.get_paragraphs(
+                content, examples, max_tokens=max_tokens, temperature=temperature, lang=lang,
+            ):
+                # we are not parsing again, because sometimes model returns paragraphs without trailing marker
+                paragraphs.append(
+                    re.sub(
+                        r"【(\d+)】",
+                        lambda match: f"【{int(match.group(1)) + base_marker}】",
+                        paragraph,
+                    )
+                )
+
+            if i < len(chunks) - 1 and paragraphs:
+                paragraphs.pop()
+                # discard paragraphs without markers
+                while paragraphs and not re.findall(r"【(\d+)】", paragraphs[-1]):
+                    paragraphs.pop()
+
+            if len(paragraphs) > 1:
+                # we are not parsing, because sometimes model returns paragraphs without trailing marker
+                markers = sorted(
+                    [int(marker) for marker in re.findall(r"【(\d+)】", paragraphs[-1])]
+                )
+                if markers:
+                    last_marker = markers[-1]
+                    tail = render(
+                        {
+                            marker: text
+                            for marker, text in parse(chunk).items()
+                            if marker >= last_marker
+                        }
+                    )
+                else:
+                    tail = chunk
+            else:
+                tail = chunk
+            pbar.update(1)
+
+    return paragraphs
+
+
+def index(
+    transcript: list[SpeechEvent],
+    llm: LanguageModel,
+    max_tokens: int = 4096,
+    temperature: float = 0.5,
+    chunk_size: int = 2048,
+    lang: str | None = None,
+) -> Content:
     """Index content with retries for metadata generation"""
-    
-    # Convert transcript to text with markers
     text = render({i: event.text for i, event in enumerate(transcript)})
-    
-    # Get paragraphs with retries
     paragraphs = get_paragraphs(text, llm, max_tokens, temperature, chunk_size, lang=lang)
-    
-    # Retry getting title and summary
-    title = "Generated Title"
-    summary = "Generated Summary"
-    chapters = {0: "Main Content"}
-    
-    for attempt in range(MAX_RETRIES):
+
+    # Retry logic for title and summary
+    title = None
+    summary = None
+    for attempt in range(3):  # Try up to 3 times
         try:
             title, summary = llm.get_meta(paragraphs, lang=lang)
-            break
+            if title and summary and "Missing" not in title and "Missing" not in summary:
+                break
         except Exception:
-            if attempt == MAX_RETRIES - 1:
-                title = "Missing Title"
-                summary = "Missing Summary"
-            time.sleep(RETRY_DELAY * (2 ** attempt))
-            
-    # Retry getting chapters        
-    for attempt in range(MAX_RETRIES):
+            if attempt == 2:  # Last attempt
+                title = "Generated Title" if not title else title
+                summary = "Generated Summary" if not summary else summary
+            time.sleep(2 * (attempt + 1))  # Exponential backoff
+    
+    # Retry logic for chapters
+    chapters = None
+    for attempt in range(3):
         try:
             chapters = llm.get_chapters(paragraphs, lang=lang)
-            break
+            if chapters:
+                break
         except Exception:
-            if attempt == MAX_RETRIES - 1:
+            if attempt == 2:
                 chapters = {0: "All Content"}
-            time.sleep(RETRY_DELAY * (2 ** attempt))
+            time.sleep(2 * (attempt + 1))
 
     return Content(
-        title=title,
-        summary=summary,
+        title=title or "Missing Title",
+        summary=summary or "Missing Summary", 
         passages=paragraphs,
         transcript=transcript,
-        chapters=chapters,
+        chapters=chapters or {0: "All Content"},
     )
-
 
 rewrite_examples = {
     "en": [
