@@ -3,7 +3,7 @@
 set -e
 
 # Constants
-MAX_RETRIES=3
+MAX_RETRIES=2
 RETRY_DELAY=2
 
 # Function to handle errors
