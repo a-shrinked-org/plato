@@ -65,10 +65,10 @@ get_with_retry() {
     # If we failed to get content, try to generate it
     case "$content_type" in
         "title")
-            output=$(plato --generate-title "$URL" --lang "$LANG" 2>/dev/null || echo "$error_msg")
+            output=$(plato --generate-title "$URL" --lang "$LANG" $MODEL_FLAG 2>/dev/null || echo "$error_msg")
             ;;
         "abstract")
-            output=$(plato --generate-summary "$URL" --lang "$LANG" 2>/dev/null || echo "$error_msg")
+            output=$(plato --generate-summary "$URL" --lang "$LANG" $MODEL_FLAG 2>/dev/null || echo "$error_msg")
             ;;
     esac
     
@@ -88,6 +88,7 @@ URL="$1"
 LANG="en"
 VERBOSE="false"
 IMAGES="false"
+MODEL="anthropic"  # Default model
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -103,6 +104,10 @@ while [[ $# -gt 0 ]]; do
         IMAGES="true"
         shift
         ;;
+    --model)
+        MODEL="$2"
+        shift 2
+        ;;
     *)
         shift
         ;;
@@ -115,17 +120,39 @@ if [ -z "$URL" ]; then
     exit 1
 fi
 
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    echo "Error: ANTHROPIC_API_KEY is not set"
-    echo "Obtain it from https://console.anthropic.com/keys"
-    echo "Run: export ANTHROPIC_API_KEY=<your-api-key>"
+# Validate model selection and API keys
+case "$MODEL" in
+"anthropic")
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        echo "Error: ANTHROPIC_API_KEY is not set"
+        echo "Obtain it from https://console.anthropic.com/keys"
+        echo "Run: export ANTHROPIC_API_KEY=<your-api-key>"
+        exit 1
+    fi
+    MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
+    MODEL_INFO="Claude (Anthropic)"
+    ;;
+"gemini")
+    if [ -z "$GOOGLE_API_KEY" ]; then
+        echo "Error: GOOGLE_API_KEY is not set"
+        echo "Obtain it from https://makersuite.google.com/app/apikey"
+        echo "Run: export GOOGLE_API_KEY=<your-api-key>"
+        exit 1
+    fi
+    MODEL_FLAG="--gemini-api-key $GOOGLE_API_KEY"
+    MODEL_INFO="Gemini (Google)"
+    ;;
+*)
+    echo "Error: Invalid model: $MODEL"
+    echo "Available models: anthropic, gemini"
     exit 1
-fi
+    ;;
+esac
 
 # Load language-specific prompts
 case "$LANG" in
 "en")
-    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and identify the list of contributors. Output as Markdown list: First Name, Last Name, Title, Organization. Output \"Unknown\" if the contributors are not known. In the end of the list always add \"- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\". Start with \"## Contributors, Acknowledgements, Mentions\""
+    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and identify the list of contributors. Output as Markdown list: First Name, Last Name, Title, Organization. Output \"Unknown\" if the contributors are not known. In the end of the list always add these two lines:\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generated using $MODEL_INFO\nStart with \"## Contributors, Acknowledgements, Mentions\""
     CONTRIBUTORS_PREFILL=$'## Contributors, Acknowledgements, Mentions\n'
     INTRODUCTION_PROMPT="Thoroughly review the <context> and write \"Introduction\" chapter for the paper. Write in the style of the original <context>. Use only words from <context>. Use quotes from <context> when necessary. Make sure to include <markers>. Output as Markdown. Start with \"## Introduction\""
     INTRODUCTION_PREFILL=$'## Introduction\n'
@@ -133,7 +160,7 @@ case "$LANG" in
     CONCLUSION_PREFILL=$'## Conclusion\n'
     ;;
 "es")
-    CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. Al final de la lista, agregue siempre \"- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\". Comience con \"## Contribuyentes, Agradecimientos, Menciones\""
+    CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. Al final de la lista, agregue siempre estas dos líneas:\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generado usando $MODEL_INFO\nComience con \"## Contribuyentes, Agradecimientos, Menciones\""
     CONTRIBUTORS_PREFILL=$'## Contribuyentes, Agradecimientos, Menciones\n'
     INTRODUCTION_PROMPT="Revise a fondo el <context> y escriba el capítulo \"Introducción\" para el artículo. Escriba en el estilo del original <context>. Use solo las palabras de <context>. Use comillas del original <context> cuando sea necesario. Asegúrese de incluir <markers>. Salida como Markdown. Comience con \"## Introducción\""
     INTRODUCTION_PREFILL=$'## Introducción\n'
@@ -146,19 +173,19 @@ case "$LANG" in
     ;;
 esac
 
-echo "Indexing $URL..."
+echo "Indexing $URL using $MODEL_INFO..."
 echo "IMAGES: $IMAGES"
 
 # Handle audio transcription
 if [ -z "$ASSEMBLYAI_API_KEY" ]; then
     echo "ASSEMBLYAI_API_KEY is not set. Retrieving text from URL (subtitles, etc)."
-    if ! plato "$URL" ${IMAGES:+--images} --lang "$LANG" >/dev/null; then
+    if ! plato "$URL" ${IMAGES:+--images} --lang "$LANG" $MODEL_FLAG >/dev/null; then
         echo "Error: Failed to retrieve text from URL"
         exit 1
     fi
 else
     echo "Transcribing audio to text using AssemblyAI..."
-    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" >/dev/null; then
+    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" $MODEL_FLAG >/dev/null; then
         echo "Error: Failed to transcribe audio"
         exit 1
     fi
@@ -175,15 +202,15 @@ fi
 
 # Get content with retries and sanitization
 echo "Retrieving title..."
-TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG'" "Generated Title" "title")
+TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Title" "title")
 echo "Retrieving abstract..."
-ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG'" "Generated Summary" "abstract")
+ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Summary" "abstract")
 echo "Retrieving passages..."
-PASSAGES=$(get_with_retry "plato --passages --chapters --inline-references '$URL' --lang '$LANG'" "No content available" "passages")
+PASSAGES=$(get_with_retry "plato --passages --chapters --inline-references '$URL' --lang '$LANG' $MODEL_FLAG" "No content available" "passages")
 echo "Retrieving references..."
-REFERENCES=$(get_with_retry "plato --references '$URL' --lang '$LANG'" "No references available" "references")
+REFERENCES=$(get_with_retry "plato --references '$URL' --lang '$LANG' $MODEL_FLAG" "No references available" "references")
 echo "Retrieving chapters..."
-CHAPTERS=$(get_with_retry "plato --chapters '$URL' --lang '$LANG'" "No chapters available" "chapters")
+CHAPTERS=$(get_with_retry "plato --chapters '$URL' --lang '$LANG' $MODEL_FLAG" "No chapters available" "chapters")
 
 # Sanitize outputs
 TITLE=$(sanitize_output "$TITLE" "Missing Title")
@@ -198,7 +225,7 @@ CONTRIBUTORS=$(plato \
     --generate \
     --context-size large \
     --prefill "$CONTRIBUTORS_PREFILL" \
-    "$URL" --lang "$LANG" || echo "Unknown Contributors")
+    "$URL" --lang "$LANG" $MODEL_FLAG || echo "Unknown Contributors")
 
 echo "Generating Introduction..."
 INTRODUCTION=$(plato \
@@ -207,7 +234,7 @@ INTRODUCTION=$(plato \
     --context-size large \
     --inline-references \
     --prefill "$INTRODUCTION_PREFILL" \
-    "$URL" --lang "$LANG" || echo "No introduction available")
+    "$URL" --lang "$LANG" $MODEL_FLAG || echo "No introduction available")
 
 echo "Generating Conclusion..."
 CONCLUSION=$(plato \
@@ -216,7 +243,7 @@ CONCLUSION=$(plato \
     --context-size large \
     --inline-references \
     --prefill "$CONCLUSION_PREFILL" \
-    "$URL" --lang "$LANG" || echo "No conclusion available")
+    "$URL" --lang "$LANG" $MODEL_FLAG || echo "No conclusion available")
 
 # Function to generate document
 generate_document() {
@@ -225,6 +252,7 @@ generate_document() {
     
     (
         echo $'# '"${TITLE}"$'\n'
+        echo $'## Model Info\n\nGenerated using '"$MODEL_INFO"$'\n'
         echo $'## Origin\n\n'"$URL"$'\n'
         echo $'## Abstract\n\n'"${ABSTRACT}"$'\n'
         echo "$CONTRIBUTORS"$'\n'
@@ -254,7 +282,7 @@ generate_document true "-refs" | \
 # Handle image extraction
 if [ "$IMAGES" = true ]; then
     echo "Extracting images..."
-    IMAGE_OUTPUT=$(plato --images "$URL" --lang "$LANG" | sed '/^$/d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+    IMAGE_OUTPUT=$(plato --images "$URL" --lang "$LANG" $MODEL_FLAG | sed '/^$/d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
     
     if [ -n "$IMAGE_OUTPUT" ]; then
         TMP_IMG_DIR=$(mktemp -d)

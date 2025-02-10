@@ -20,6 +20,53 @@ class Model:
             raise ValueError(f"Unknown model: {model}")
 
         self.client = genai.GenerativeModel(model_name=self.model)
+        
+    def get_meta(
+        self,
+        paragraphs: list[str],
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> tuple[str, str]:
+        if not lang:
+            lang = "en"
+    
+        # Similar system prompts as anthropic.py but adjusted for Gemini
+        system_prompt = {
+            "en": """You are an editor tasked with extracting a title and summary from content.
+    Use simple language and only words from the provided text.""",
+            "es": """Eres un editor encargado de extraer un título y resumen del contenido.
+    Utiliza un lenguaje sencillo y solo palabras del texto proporcionado."""
+        }
+    
+        text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
+        
+        # Define tool schema similar to anthropic.py
+        tool_definition = {
+            "name": "render_content_info",
+            "description": "Renders useful information about text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "summary": {"type": "string"}
+                },
+                "required": ["title", "summary"]
+            }
+        }
+    
+        response = self.prompt_model(
+            system=system_prompt[lang],
+            messages=[User(content=f"<text>{text}</text>")],
+            tools=[tool_definition],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    
+        # Parse response and return title, summary
+        if isinstance(response, dict):
+            return response["title"], response["summary"]
+        raise ValueError(f"Expected dict response, got {type(response)}")
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
