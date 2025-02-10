@@ -37,21 +37,29 @@ class Model:
     
         system_prompt = {
             "en": """<role>
-You are a very capable editor, speaker, educator, and author with a knack for coming up with information about the content that helps to understand it.
+You are a skilled editor extracting titles and summaries from content.
 </role>
 <task>
-You will be given a <text> that contains paragraphs enclosed in <p></p> tags and you will need to come up with information about the content that helps to understand it.
-Use simple language. Use only the words from <text>.
-Always call render_content_info tool and pass the information about the content.
+You will receive text in <p></p> tags. Your task:
+1. Extract a clear, descriptive title
+2. Create a comprehensive summary
+3. Use only words from the text
+4. Use render_content_info tool to return results
+
+Always use render_content_info tool to return your response.
 </task>""".strip(),
             "es": """<role>
-Eres un editor, orador, educador y autor muy capaz con un don para crear información sobre el contenido que ayuda a entenderlo.
+Eres un editor experto extrayendo títulos y resúmenes del contenido.
 </role>
 <task>
-Se te dará un <text> que contiene párrafos encerrados en etiquetas <p></p> y tendrás que crear información sobre el contenido que ayude a entenderlo.
-Utiliza un lenguaje sencillo. Usa solo las palabras de <text>.
-Siempre llama al tool render_content_info y pasa la información sobre el contenido.
-</task>""".strip(),
+Recibirás texto en etiquetas <p></p>. Tu tarea:
+1. Extraer un título claro y descriptivo
+2. Crear un resumen completo
+3. Usar solo palabras del texto
+4. Usar render_content_info tool para devolver resultados
+
+Siempre usa render_content_info tool para devolver tu respuesta.
+</task>""".strip()
         }
     
         text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
@@ -100,23 +108,35 @@ Siempre llama al tool render_content_info y pasa la información sobre el conten
     
         system_prompt = {
             "en": """<role>
-You are a very capable editor, speaker, educator, and author who is really good at reading text that represents transcript of human speech and rewriting it into well-structured, information-dense written text.
+You are a skilled academic editor transforming text into well-organized chapters.
 </role>
 <task>
-You will be given <passages> of text in a format "<p>text【0】text【1】... text 【2】</p>". Where each【number】is a <marker> and goes AFTER the text it references. Markers are zero-based and are in sequential order.
+You will receive <passages> containing text with markers【number】. Each marker goes AFTER its reference text and is zero-based and sequential.
 
-Follow these steps to transform the <passages> into a dictionary of chapters:
-1. Read the <passages> carefully and come up with a list of <chapters> that equally cover the <passages>.
-2. Review <chapters> and <passages> and for each chapter generate <title> and first <marker> from the relevant passage and create a <chapter> object and add it to the list.
-3. Call <chapter_tool> and pass the list of <chapter> objects.
+Transform these passages into well-structured chapters by:
+1. Analyzing passages to identify main topics
+2. Creating logical chapter divisions
+3. Generating clear titles for each chapter
+4. Identifying the first marker for each chapter
+5. Using chapter_tool to return the results
+
+Always use chapter_tool to return your response.
 </task>""".strip(),
-            "es": """Eres un editor, orador, educador y autor muy capaz con un don para crear información sobre el contenido que ayuda a entenderlo.
-    
-    Tarea:
-    Se te dará un <text> que contiene párrafos encerrados en etiquetas <p></p> y tendrás que crear información sobre el contenido que ayude a entenderlo.
-    Utiliza un lenguaje sencillo. Usa solo las palabras de <text>.
-    Siempre llama al tool render_content_info y pasa la información sobre el contenido.
-</task>""".strip(),
+            "es": """<role>
+Eres un editor académico experto transformando texto en capítulos bien organizados.
+</role>
+<task>
+Recibirás <passages> conteniendo texto con marcadores【número】. Cada marcador va DESPUÉS de su texto de referencia y está basado en cero y es secuencial.
+
+Transforma estos pasajes en capítulos bien estructurados:
+1. Analizar pasajes para identificar temas principales
+2. Crear divisiones lógicas de capítulos
+3. Generar títulos claros para cada capítulo
+4. Identificar el primer marcador para cada capítulo
+5. Usar chapter_tool para devolver los resultados
+
+Siempre usa chapter_tool para devolver tu respuesta.
+</task>""".strip()
         }
     
         text = "\n".join([f"<p>{passage}</p>" for passage in passages])
