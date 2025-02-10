@@ -130,7 +130,7 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
-    MODEL_INFO="Claude (Anthropic)"
+    MODEL_INFO="Claude 3.5 Sonnet (Anthropic, 2024-06-20)"  # More specific version info
     ;;
 "gemini")
     if [ -z "$GOOGLE_API_KEY" ]; then
@@ -140,7 +140,7 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--gemini-api-key $GOOGLE_API_KEY"
-    MODEL_INFO="Gemini (Google)"
+    MODEL_INFO="Gemini 2.0 Pro (Google, 2024-02-05)"  # More specific version info
     ;;
 *)
     echo "Error: Invalid model: $MODEL"

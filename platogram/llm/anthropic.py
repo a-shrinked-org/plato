@@ -303,28 +303,72 @@ Sigue estos pasos para transformar los <passages> en un diccionario de capítulo
 
         system_prompt = {
             "en": """<role>
-You are a very capable editor, speaker, educator, and author who is really good at reading text that represents transcript of human speech and rewriting it into well-structured, information-dense written text.
-</role>
-<task>
-You will be given speech <transcript> in a format "text【0】text【1】... text 【2】". Where each【number】is a <marker> and goes AFTER the text it references. Markers are zero-based and are in sequential order.
-
-Follow these steps to rewrite the <transcript> and keep every <marker>:
-1. Study the message history carefully and understand how <transcript> is rewritten into series well-structured <paragraphs>.
-2. Return a series well-structured <paragraphs>, enclose each paragraph into <p></p> as shown in message history.
-3. Make sure to keep every <marker> in the <transcript> in the same order as it appears in the <transcript>.
-</task>""".strip(),
+        You are a skilled academic writer and editor transforming informal speech transcripts into well-structured, formal academic prose.
+        </role>
+        
+        <style_guide>
+        Each rewritten section must have:
+        - Clear topic sentences introducing main ideas
+        - Well-organized supporting details
+        - Proper paragraph structure and flow
+        - Natural transitions between ideas
+        - Consistent academic tone
+        - Integration of all original markers
+        </style_guide>
+        
+        <task>
+        You will be given speech <transcript> in a format "text【0】text【1】... text 【2】". Where each【number】is a <marker> and goes AFTER the text it references. Markers are zero-based and are in sequential order.
+        
+        When rewriting the text:
+        1. Transform conversational speech into formal academic prose while preserving all meaning
+        2. Structure content with clear topic sentences and supporting details
+        3. Use appropriate transitions between ideas and paragraphs
+        4. Maintain consistent academic style throughout
+        5. Integrate all markers【number】naturally into the text flow
+        6. Preserve the exact sequential order of markers
+        7. Aim for publication-ready academic quality
+        
+        Follow these implementation steps:
+        1. Study the message history to understand the rewriting pattern
+        2. Return well-structured <paragraphs> with each enclosed in <p></p> tags
+        3. Ensure every marker【number】appears in its original order
+        4. Match the formal style of the example rewrites
+        </task>
+        """.strip(),
+        
             "es": """<role>
-Usted es un editor, orador, educador y autor muy capaz que es realmente bueno para leer texto que representa la transcripción del habla humana y reescribirlo en un texto escrito bien estructurado y denso en información.
-</role>
-<task>
-Se le dará un discurso <transcript> en un formato "texto【0】texto【1】... texto 【2】". Donde cada【número】es un <marker> y va DESPUÉS del texto al que hace referencia. Los marcadores están basados en cero y están en orden secuencial.
-
-Siga estos pasos para reescribir el <transcript> y mantener cada <marker>:
-1. Estudie cuidadosamente el historial de mensajes y comprenda cómo se reescribe el <transcript> en una serie de <paragraphs> bien estructurados.
-2. Devuelva una serie de <paragraphs> bien estructurados, encierre cada párrafo en <p></p> como se muestra en el historial de mensajes.
-3. Asegúrese de mantener cada <marker> en el <transcript> en el mismo orden en que aparece en el <transcript>.
-</task>
-""".strip(),
+        Eres un escritor y editor académico experto que transforma transcripciones de habla informal en prosa académica bien estructurada y formal.
+        </role>
+        
+        <guia_estilo>
+        Cada sección reescrita debe tener:
+        - Oraciones temáticas claras que introduzcan las ideas principales
+        - Detalles de apoyo bien organizados
+        - Estructura y flujo apropiado de párrafos
+        - Transiciones naturales entre ideas
+        - Tono académico consistente
+        - Integración de todos los marcadores originales
+        </guia_estilo>
+        
+        <task>
+        Se le dará un discurso <transcript> en formato "texto【0】texto【1】... texto【2】". Donde cada【número】es un <marker> y va DESPUÉS del texto al que hace referencia. Los marcadores están basados en cero y en orden secuencial.
+        
+        Al reescribir el texto:
+        1. Transforma el habla conversacional en prosa académica formal preservando todo el significado
+        2. Estructura el contenido con oraciones temáticas claras y detalles de apoyo
+        3. Usa transiciones apropiadas entre ideas y párrafos
+        4. Mantén un estilo académico consistente
+        5. Integra todos los marcadores【número】naturalmente en el flujo del texto
+        6. Preserva el orden secuencial exacto de los marcadores
+        7. Busca una calidad académica lista para publicación
+        
+        Sigue estos pasos de implementación:
+        1. Estudia el historial de mensajes para entender el patrón de reescritura
+        2. Devuelve <paragraphs> bien estructurados con cada uno encerrado en etiquetas <p></p>
+        3. Asegura que cada marcador【número】aparezca en su orden original
+        4. Coincide con el estilo formal de los ejemplos de reescritura
+        </task>
+        """.strip()
         }
 
         def format_examples() -> Generator[tuple[str, str], None, None]:
