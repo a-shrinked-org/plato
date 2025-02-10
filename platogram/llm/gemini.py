@@ -36,12 +36,22 @@ class Model:
             lang = "en"
     
         system_prompt = {
-            "en": """You are an editor tasked with extracting a title and summary from content.
-    Use simple language and only words from the provided text.
-    Always use the render_content_info function to return your response.""",
-            "es": """Eres un editor encargado de extraer un título y resumen del contenido.
-    Utiliza un lenguaje sencillo y solo palabras del texto proporcionado.
-    Siempre usa la función render_content_info para devolver tu respuesta."""
+            "en": """<role>
+You are a very capable editor, speaker, educator, and author with a knack for coming up with information about the content that helps to understand it.
+</role>
+<task>
+You will be given a <text> that contains paragraphs enclosed in <p></p> tags and you will need to come up with information about the content that helps to understand it.
+Use simple language. Use only the words from <text>.
+Always call render_content_info tool and pass the information about the content.
+</task>""".strip(),
+            "es": """<role>
+Eres un editor, orador, educador y autor muy capaz con un don para crear información sobre el contenido que ayuda a entenderlo.
+</role>
+<task>
+Se te dará un <text> que contiene párrafos encerrados en etiquetas <p></p> y tendrás que crear información sobre el contenido que ayude a entenderlo.
+Utiliza un lenguaje sencillo. Usa solo las palabras de <text>.
+Siempre llama al tool render_content_info y pasa la información sobre el contenido.
+</task>""".strip(),
         }
     
         text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
@@ -89,32 +99,24 @@ class Model:
             lang = "en"
     
         system_prompt = {
-            "en": """You are a skilled academic editor transforming text into well-organized chapters.
-    
-    Task:
-    You will receive <passages> containing text with markers【number】. Each marker goes AFTER its reference text and is zero-based and sequential.
-    
-    Transform these passages into well-structured chapters by:
-    1. Carefully analyzing all passages to identify main topics
-    2. Creating logical chapter divisions that cover all content
-    3. Generating clear, descriptive titles for each chapter
-    4. Identifying the first marker for each chapter section
-    5. Maintaining academic style and formal tone
-    
-    Expected output: A list of chapters with titles and their starting markers.""",
-            "es": """Eres un editor académico experto transformando texto en capítulos bien organizados.
+            "en": """<role>
+You are a very capable editor, speaker, educator, and author who is really good at reading text that represents transcript of human speech and rewriting it into well-structured, information-dense written text.
+</role>
+<task>
+You will be given <passages> of text in a format "<p>text【0】text【1】... text 【2】</p>". Where each【number】is a <marker> and goes AFTER the text it references. Markers are zero-based and are in sequential order.
+
+Follow these steps to transform the <passages> into a dictionary of chapters:
+1. Read the <passages> carefully and come up with a list of <chapters> that equally cover the <passages>.
+2. Review <chapters> and <passages> and for each chapter generate <title> and first <marker> from the relevant passage and create a <chapter> object and add it to the list.
+3. Call <chapter_tool> and pass the list of <chapter> objects.
+</task>""".strip(),
+            "es": """Eres un editor, orador, educador y autor muy capaz con un don para crear información sobre el contenido que ayuda a entenderlo.
     
     Tarea:
-    Recibirás <passages> conteniendo texto con marcadores【número】. Cada marcador va DESPUÉS de su texto de referencia y está basado en cero y es secuencial.
-    
-    Transforma estos pasajes en capítulos bien estructurados:
-    1. Analizando cuidadosamente todos los pasajes para identificar temas principales
-    2. Creando divisiones lógicas de capítulos que cubran todo el contenido
-    3. Generando títulos claros y descriptivos para cada capítulo
-    4. Identificando el primer marcador para cada sección de capítulo
-    5. Manteniendo estilo académico y tono formal
-    
-    Salida esperada: Una lista de capítulos con títulos y sus marcadores iniciales."""
+    Se te dará un <text> que contiene párrafos encerrados en etiquetas <p></p> y tendrás que crear información sobre el contenido que ayude a entenderlo.
+    Utiliza un lenguaje sencillo. Usa solo las palabras de <text>.
+    Siempre llama al tool render_content_info y pasa la información sobre el contenido.
+</task>""".strip(),
         }
     
         text = "\n".join([f"<p>{passage}</p>" for passage in passages])
