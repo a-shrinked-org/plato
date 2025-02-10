@@ -59,14 +59,15 @@ def process_url(
     assemblyai_api_key: str | None = None,
     extract_images: bool = False,
     lang: str | None = None,
+    gemini_api_key: str | None = None, 
 ) -> Content:
     if not lang:
         lang = "en"
 
-    llm = plato.llm.get_model(
-        "gemini/gemini-2-pro" if args.gemini_api_key else "anthropic/claude-3-5-sonnet",
-        args.gemini_api_key if args.gemini_api_key else anthropic_api_key
-    )
+    model_name = "gemini/gemini-2-pro" if gemini_api_key else "anthropic/claude-3-5-sonnet"
+    api_key = gemini_api_key if gemini_api_key else anthropic_api_key
+    llm = plato.llm.get_model(model_name, api_key)
+    
     asr = (
         plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
         if assemblyai_api_key
@@ -193,6 +194,7 @@ def main():
                 args.assemblyai_api_key,
                 extract_images=args.images,
                 lang=lang,
+                gemini_api_key=args.gemini_api_key,
             )
             for url_or_file in args.inputs
         ]
