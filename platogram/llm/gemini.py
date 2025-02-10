@@ -369,10 +369,12 @@ class Model:
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
-        return self.client.count_tokens(text).total_tokens
+        try:
+            return self.client.count_tokens(text).total_tokens
+        except Exception as e:
+            # Fallback to rough estimation if API fails
+            return len(text.split()) * 2  # Rough approximation
 
-    # Add this error handling to prompt_model method:
-    
     def prompt_model(
         self,
         messages: Sequence[User | Assistant],
@@ -388,37 +390,52 @@ class Model:
             gemini_messages.append({"role": "system", "content": system})
         
         for m in messages:
+            # Handle both text and structured content
+            content = m.content
+            if hasattr(m, 'cache') and m.cache:
+                # Handle cached content similar to Anthropic's ephemeral caching
+                content = {"text": m.content, "cache_control": "ephemeral"}
+            
             gemini_messages.append({
                 "role": "user" if isinstance(m, User) else "assistant",
-                "content": m.content
+                "content": content
             })
-    
+
         max_retries = 3
         backoff = 2
-    
+
         for attempt in range(max_retries):
             try:
                 response = self.client.generate_content(
                     gemini_messages,
                     generation_config={
                         "max_output_tokens": max_tokens,
-                        "temperature": temperature
+                        "temperature": temperature,
+                        "candidate_count": 1,
                     },
                     tools=tools if tools else None,
                     stream=stream
                 )
-    
+
                 if stream:
                     def stream_text():
                         for chunk in response:
-                            yield chunk.text
+                            if hasattr(chunk, 'text'):
+                                yield chunk.text
                     return stream_text()
-    
+
+                # Handle function calling/tools response
                 if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
                     return response.candidates[0].content.parts[0].function_call.args
                 
-                return response.text
-    
+                # Handle regular text response
+                if hasattr(response, 'text'):
+                    return response.text
+                elif hasattr(response, 'candidates') and len(response.candidates) > 0:
+                    return response.candidates[0].content.text
+
+                raise ValueError(f"Unexpected response format: {response}")
+
             except Exception as e:
                 if attempt == max_retries - 1:
                     raise
