@@ -49,9 +49,13 @@ class LanguageModel(Protocol):
 
 
 def get_model(full_model_name: str, key: str | None = None) -> LanguageModel:
-    if full_model_name.startswith("anthropic/"):
+    provider, model = full_model_name.split("/", 1) if "/" in full_model_name else ("anthropic", full_model_name)
+    
+    if provider == "anthropic":
         from platogram.llm.anthropic import Model
-
-        return Model(full_model_name.split("/")[-1], key)
+        return Model(model, key)
+    elif provider == "gemini":
+        from platogram.llm.gemini import Model
+        return Model(model, key)
     else:
-        raise ValueError(f"Unsupported language model: {full_model_name}")
+        raise ValueError(f"Unsupported language model provider: {provider}. Supported providers are: anthropic, gemini")

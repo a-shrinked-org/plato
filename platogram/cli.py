@@ -63,7 +63,10 @@ def process_url(
     if not lang:
         lang = "en"
 
-    llm = plato.llm.get_model("anthropic/claude-3-5-sonnet", anthropic_api_key)
+    llm = plato.llm.get_model(
+        "gemini/gemini-2-pro" if args.gemini_api_key else "anthropic/claude-3-5-sonnet",
+        args.gemini_api_key if args.gemini_api_key else anthropic_api_key
+    )
     asr = (
         plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
         if assemblyai_api_key
@@ -127,6 +130,7 @@ def main():
     )
     parser.add_argument("--lang", help="Content language: en, es")
     parser.add_argument("--anthropic-api-key", help="Anthropic API key")
+    parser.add_argument("--gemini-api-key", help="Google Gemini API key")
     parser.add_argument("--assemblyai-api-key", help="AssemblyAI API key (optional)")
     parser.add_argument(
         "--retrieve", default=None, help="Number of results to retrieve"
