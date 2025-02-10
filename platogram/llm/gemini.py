@@ -47,7 +47,7 @@ class Model:
         text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
         
         tool_definition = {
-            "function": "render_content_info",
+            "name": "render_content_info",
             "description": "Renders useful information about text.",
             "parameters": {
                 "type": "object",
@@ -73,26 +73,10 @@ class Model:
             temperature=temperature,
         )
     
-        # Handle Gemini's function call response format
-        if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-            chapters = response.candidates[0].content.parts[0].function_call.args
-        elif isinstance(response, dict):
-            chapters = response
-        else:
-            raise ValueError(f"Expected function call or dict response, got {type(response)}")
-        
-        assert isinstance(chapters.get("entities"), list), f"Expected list, got {type(chapters.get('entities'))}"
-        
-        return {
-            int(re.findall(r"\d+", chapter["marker"])[0]): chapter["title"].strip()
-            for chapter in chapters["entities"]
-        }
-        
-        # Fallback for direct dictionary response
         if isinstance(response, dict):
-            return response.get("title"), response.get("summary")
+            return response.get("title", ""), response.get("summary", "")
             
-        raise ValueError(f"Expected function call or dict response, got {type(response)}")
+        raise ValueError(f"Expected dict response, got {type(response)}")
     
     def get_chapters(
         self,
@@ -133,8 +117,10 @@ class Model:
     Salida esperada: Una lista de capítulos con títulos y sus marcadores iniciales."""
         }
     
+        text = "\n".join([f"<p>{passage}</p>" for passage in passages])
+        
         tool_definition = {
-            "function": "chapter_tool", 
+            "name": "chapter_tool",
             "description": "Creates chapters from passages",
             "parameters": {
                 "type": "object",
@@ -161,8 +147,7 @@ class Model:
             }
         }
     
-        text = "\n".join([f"<p>{passage}</p>" for passage in passages])
-        chapters = self.prompt_model(
+        response = self.prompt_model(
             system=system_prompt[lang],
             messages=[User(content=f"<passages>{text}</passages>")],
             tools=[tool_definition],
@@ -170,13 +155,13 @@ class Model:
             temperature=temperature,
         )
     
-        assert isinstance(chapters, dict), f"Expected dict, got {type(chapters)}"
-        assert isinstance(chapters["entities"], list), f"Expected list, got {type(chapters['entities'])}"
-        
-        return {
-            int(re.findall(r"\d+", chapter["marker"])[0]): chapter["title"].strip()
-            for chapter in chapters["entities"]
-        }
+        if isinstance(response, dict) and "entities" in response:
+            return {
+                int(re.findall(r"\d+", chapter["marker"])[0]): chapter["title"].strip()
+                for chapter in response["entities"]
+            }
+            
+        raise ValueError(f"Expected dict with entities, got {type(response)}")
     
     def get_paragraphs(
         self,
@@ -426,7 +411,8 @@ class Model:
 
                 # Handle function calling/tools response
                 if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                    return response.candidates[0].content.parts[0].function_call.args
+                    function_call = response.candidates[0].content.parts[0].function_call
+                    return function_call.args
                 
                 # Handle regular text response
                 if hasattr(response, 'text'):

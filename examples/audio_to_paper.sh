@@ -152,17 +152,7 @@ esac
 # Load language-specific prompts
 case "$LANG" in
 "en")
-    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and create a list of contributors in this exact format:
-1. List any identified contributors as bullet points with available information:
-- First Name, Last Name, Title, Organization
-
-2. If information is missing, use 'Unknown' for those fields.
-
-3. Always end the list with these exact two lines (do not modify them):
-- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.
-- Generated using $MODEL_INFO
-
-Start with \"## Contributors, Acknowledgements, Mentions\""
+    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and identify the list of contributors. Output as Markdown list: First Name, Last Name, Title, Organization. Output \"Unknown\" if the contributors are not known. In the end of the list ALWAYS add these EXACT two lines (do not modify them):\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generated using $MODEL_INFO\nStart with \"## Contributors, Acknowledgements, Mentions\""
     CONTRIBUTORS_PREFILL=$'## Contributors, Acknowledgements, Mentions\n'
     INTRODUCTION_PROMPT="Thoroughly review the <context> and write \"Introduction\" chapter for the paper. Write in the style of the original <context>. Use only words from <context>. Use quotes from <context> when necessary. Make sure to include <markers>. Output as Markdown. Start with \"## Introduction\""
     INTRODUCTION_PREFILL=$'## Introduction\n'
@@ -170,17 +160,7 @@ Start with \"## Contributors, Acknowledgements, Mentions\""
     CONCLUSION_PREFILL=$'## Conclusion\n'
     ;;
 "es")
-    CONTRIBUTORS_PROMPT="Revise a fondo el <context> y cree una lista de contribuyentes en este formato exacto:
-1. Liste cualquier contribuyente identificado como puntos con la información disponible:
-- Nombre, Apellido, Cargo, Organización
-
-2. Si falta información, use 'Unknown' para esos campos.
-
-3. Siempre termine la lista con estas dos líneas exactas (no las modifique):
-- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.
-- Generado usando $MODEL_INFO
-
-Comience con \"## Contribuyentes, Agradecimientos, Menciones\""
+    CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. Al final de la lista, agregue SIEMPRE estas DOS líneas EXACTAS (no las modifique):\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generado usando $MODEL_INFO\nComience con \"## Contribuyentes, Agradecimientos, Menciones\""
     CONTRIBUTORS_PREFILL=$'## Contribuyentes, Agradecimientos, Menciones\n'
     INTRODUCTION_PROMPT="Revise a fondo el <context> y escriba el capítulo \"Introducción\" para el artículo. Escriba en el estilo del original <context>. Use solo las palabras de <context>. Use comillas del original <context> cuando sea necesario. Asegúrese de incluir <markers>. Salida como Markdown. Comience con \"## Introducción\""
     INTRODUCTION_PREFILL=$'## Introducción\n'
