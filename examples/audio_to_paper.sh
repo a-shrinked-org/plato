@@ -140,7 +140,7 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--gemini-api-key $GOOGLE_API_KEY"
-    MODEL_INFO="Gemini 2.0 Pro (Google, 2024-02-05)"  # More specific version info
+    MODEL_INFO="Gemini Pro 2.0 (Google, 2024-02-05)"  # Updated model info
     ;;
 *)
     echo "Error: Invalid model: $MODEL"
@@ -152,7 +152,17 @@ esac
 # Load language-specific prompts
 case "$LANG" in
 "en")
-    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and identify the list of contributors. Output as Markdown list: First Name, Last Name, Title, Organization. Output \"Unknown\" if the contributors are not known. In the end of the list always add these two lines:\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generated using $MODEL_INFO\nStart with \"## Contributors, Acknowledgements, Mentions\""
+    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and create a list of contributors in this exact format:
+1. List any identified contributors as bullet points with available information:
+- First Name, Last Name, Title, Organization
+
+2. If information is missing, use 'Unknown' for those fields.
+
+3. Always end the list with these exact two lines (do not modify them):
+- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.
+- Generated using $MODEL_INFO
+
+Start with \"## Contributors, Acknowledgements, Mentions\""
     CONTRIBUTORS_PREFILL=$'## Contributors, Acknowledgements, Mentions\n'
     INTRODUCTION_PROMPT="Thoroughly review the <context> and write \"Introduction\" chapter for the paper. Write in the style of the original <context>. Use only words from <context>. Use quotes from <context> when necessary. Make sure to include <markers>. Output as Markdown. Start with \"## Introduction\""
     INTRODUCTION_PREFILL=$'## Introduction\n'
@@ -160,7 +170,17 @@ case "$LANG" in
     CONCLUSION_PREFILL=$'## Conclusion\n'
     ;;
 "es")
-    CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. Al final de la lista, agregue siempre estas dos líneas:\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generado usando $MODEL_INFO\nComience con \"## Contribuyentes, Agradecimientos, Menciones\""
+    CONTRIBUTORS_PROMPT="Revise a fondo el <context> y cree una lista de contribuyentes en este formato exacto:
+1. Liste cualquier contribuyente identificado como puntos con la información disponible:
+- Nombre, Apellido, Cargo, Organización
+
+2. Si falta información, use 'Unknown' para esos campos.
+
+3. Siempre termine la lista con estas dos líneas exactas (no las modifique):
+- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.
+- Generado usando $MODEL_INFO
+
+Comience con \"## Contribuyentes, Agradecimientos, Menciones\""
     CONTRIBUTORS_PREFILL=$'## Contribuyentes, Agradecimientos, Menciones\n'
     INTRODUCTION_PROMPT="Revise a fondo el <context> y escriba el capítulo \"Introducción\" para el artículo. Escriba en el estilo del original <context>. Use solo las palabras de <context>. Use comillas del original <context> cuando sea necesario. Asegúrese de incluir <markers>. Salida como Markdown. Comience con \"## Introducción\""
     INTRODUCTION_PREFILL=$'## Introducción\n'
