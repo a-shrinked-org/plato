@@ -120,7 +120,7 @@ if [ -z "$URL" ]; then
     exit 1
 fi
 
-# Validate model selection and API keys
+# Validate API keys and set model flags based on MODEL type
 case "$MODEL" in
 "anthropic")
     if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -130,7 +130,6 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
-    MODEL_INFO="Claude 3.5 Sonnet (Anthropic, 2024-06-20)"  # More specific version info
     ;;
 "gemini")
     if [ -z "$GOOGLE_API_KEY" ]; then
@@ -140,12 +139,22 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--gemini-api-key $GOOGLE_API_KEY"
-    MODEL_INFO="Gemini Pro 2.0 (Google, 2024-02-05)"  # Updated model info
     ;;
 *)
     echo "Error: Invalid model: $MODEL"
     echo "Available models: anthropic, gemini"
     exit 1
+    ;;
+esac
+
+# Add debug output for key presence
+echo "Debug: Using model: $MODEL" >&2
+case "$MODEL" in
+"anthropic")
+    echo "Debug: ANTHROPIC_API_KEY present: ${ANTHROPIC_API_KEY:+yes}" >&2
+    ;;
+"gemini")
+    echo "Debug: GOOGLE_API_KEY present: ${GOOGLE_API_KEY:+yes}" >&2
     ;;
 esac
 
