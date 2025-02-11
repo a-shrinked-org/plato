@@ -64,16 +64,25 @@ def process_url(
     if not lang:
         lang = "en"
     
+    # Check for at least one API key
+    if not anthropic_api_key and not gemini_api_key:
+        raise ValueError("Either Gemini or Anthropic API key must be provided")
+    
+    # Priority to Gemini if both keys are present
     if gemini_api_key:
         model_name = "gemini-2.0-pro"
         api_key = gemini_api_key
-    elif anthropic_api_key:
+    else:
         model_name = "anthropic/claude-3-5-sonnet"
         api_key = anthropic_api_key
-    else:
-        raise ValueError("Either Gemini or Anthropic API key must be provided")
     
     llm = plato.llm.get_model(model_name, api_key)
+    
+    asr = (
+        plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
+        if assemblyai_api_key
+        else None
+    )
     
     asr = (
         plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
@@ -196,11 +205,11 @@ def main():
             process_url(
                 url_or_file,
                 library,
+                args.gemini_api_key,
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
                 extract_images=args.images,
                 lang=lang,
-                gemini_api_key=args.gemini_api_key,
             )
             for url_or_file in args.inputs
         ]
