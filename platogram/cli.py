@@ -202,13 +202,13 @@ def main():
         ids = [make_filesystem_safe(url_or_file) for url_or_file in args.inputs]
         context = [
             process_url(
-                url_or_file=url_or_file,
-                library=library,
-                anthropic_api_key=args.anthropic_api_key,
-                assemblyai_api_key=args.assemblyai_api_key,
+                url_or_file,
+                library,
+                args.anthropic_api_key,
+                args.assemblyai_api_key,
                 extract_images=args.images,
-                lang=lang,
-                gemini_api_key=args.gemini_api_key
+                lang,
+                args.gemini_api_key
             )
             for url_or_file in args.inputs
         ]
