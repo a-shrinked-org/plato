@@ -61,7 +61,7 @@ class Model:
                 "role": "user",
                 "parts": [{"text": f"System: {system}"}]
             })
-
+        
         for m in messages:
             # Handle both dict and User/Assistant objects
             if isinstance(m, dict):
@@ -82,45 +82,45 @@ class Model:
         
         max_retries = 3
         backoff = 2
-
+        
         for attempt in range(max_retries):
-        try:
-            # Create chat session if needed for multiple messages
-            if len(contents) > 1 or stream:
-                chat = self.model.start_chat(history=contents[:-1])
-                response = chat.send_message(
-                    contents[-1]["parts"][0]["text"],
-                    generation_config=generation_config,
-                    tools=tools,
-                    stream=stream
-                )
-            else:
-                response = self.model.generate_content(
-                    contents[0]["parts"][0]["text"],
-                    generation_config=generation_config,
-                    tools=tools,
-                    stream=stream
-                )
+            try:
+                # Create chat session if needed for multiple messages
+                if len(contents) > 1 or stream:
+                    chat = self.model.start_chat(history=contents[:-1])
+                    response = chat.send_message(
+                        contents[-1]["parts"][0]["text"],
+                        generation_config=generation_config,
+                        tools=tools,
+                        stream=stream
+                    )
+                else:
+                    response = self.model.generate_content(
+                        contents[0]["parts"][0]["text"],
+                        generation_config=generation_config,
+                        tools=tools,
+                        stream=stream
+                    )
         
-            if stream:
-                def stream_text():
-                    for chunk in response:
-                        if hasattr(chunk, 'text'):
-                            yield chunk.text
-                return stream_text()
+                if stream:
+                    def stream_text():
+                        for chunk in response:
+                            if hasattr(chunk, 'text'):
+                                yield chunk.text
+                    return stream_text()
         
-            # Handle function calling/tools response
-            if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
-                return response.candidates[0].content.parts[0].function_call.args
+                # Handle function calling/tools response
+                if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
+                    return response.candidates[0].content.parts[0].function_call.args
         
-            # Handle regular text response
-            return response.text
+                # Handle regular text response
+                return response.text
         
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(backoff ** attempt)
-            continue
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(backoff ** attempt)
+                continue
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
