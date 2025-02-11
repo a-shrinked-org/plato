@@ -71,7 +71,7 @@ def process_url(
     # Debug logging for API keys
     print(f"Debug: Using Gemini key for testing", file=sys.stderr)
     
-    model_name = "gemini/gemini-2.0-pro"  # Use Pro version
+    model_name = "gemini/gemini-2.0"  # Use Pro version
     api_key = gemini_api_key
     
     llm = plato.llm.get_model(model_name, api_key)
