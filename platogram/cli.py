@@ -70,7 +70,7 @@ def process_url(
     
     # Priority to Gemini if both keys are present
     if gemini_api_key:
-        model_name = "gemini-2.0-pro"
+        model_name = "gemini/gemini-2.0-pro"
         api_key = gemini_api_key
     else:
         model_name = "anthropic/claude-3-5-sonnet"

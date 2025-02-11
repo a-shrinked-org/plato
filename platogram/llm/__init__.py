@@ -49,7 +49,12 @@ class LanguageModel(Protocol):
 
 
 def get_model(full_model_name: str, key: str | None = None) -> LanguageModel:
-    provider, model = full_model_name.split("/", 1) if "/" in full_model_name else ("anthropic", full_model_name)
+    # Split provider and model, defaulting to anthropic if no provider given
+    if "/" in full_model_name:
+        provider, model = full_model_name.split("/", 1)
+    else:
+        provider = "anthropic"
+        model = full_model_name
     
     if provider == "anthropic":
         from platogram.llm.anthropic import Model
