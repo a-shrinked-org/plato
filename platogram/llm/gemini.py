@@ -51,42 +51,38 @@ class Model:
         system: str | None = None,
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
-        # Update generation config for this request
+        # Set up config
         config = types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=max_tokens
         )
-
+    
         # Convert messages to Gemini format
         contents = []
         if system:
             contents.append(types.Content(
-                parts=[types.Part.from_text(f"System: {system}")],
+                parts=[{"text": f"System: {system}"}],
                 role="user"
             ))
         
+        # Format messages similar to Anthropic's style
         for m in messages:
-            # Handle both dict and User/Assistant objects
-            if isinstance(m, dict):
-                role = m.get("role", "user")
-                content = m.get("content", "")
-            else:
-                role = "user" if isinstance(m, User) else "model"
-                content = m.content if not hasattr(m, 'cache') else {
-                    "text": m.content, 
+            if hasattr(m, 'cache') and m.cache:
+                content = {
+                    "text": m.content,
                     "cache_control": "ephemeral"
                 }
-            
+            else:
+                content = m.content
+    
             contents.append(types.Content(
-                parts=[types.Part.from_text(str(content))],
-                role=role
+                parts=[{"text": str(content)}],
+                role="user" if isinstance(m, User) else "model"
             ))
-
-        max_retries = 3
-        backoff = 2
-        
-        for attempt in range(max_retries):
-            try:
+    
+        if not stream:
+            @RETRY
+            def get_response():
                 response = self.client.models.generate_content(
                     model=self.model_name,
                     contents=contents,
@@ -94,26 +90,38 @@ class Model:
                     tools=tools,
                 )
                 
-                if stream:
-                    def stream_text():
-                        for chunk in response:
-                            if chunk.text:
-                                yield chunk.text
-                    return stream_text()
-                
-                # Handle function calling/tools response
+                # Handle function calling/tools response similar to Anthropic
                 if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
                     return response.candidates[0].content.parts[0].function_call.args
                 
-                # Handle regular text response
                 return response.text
                 
+            return get_response()
+        
+        # Streaming implementation similar to Anthropic
+        def stream_text():
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config,
+                    tools=tools,
+                    stream=True
+                )
+                
+                @RETRY
+                def get_response():
+                    for chunk in response:
+                        if chunk.text:
+                            yield chunk.text
+                
+                return get_response()
+                
             except Exception as e:
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(backoff ** attempt)
-                continue
-
+                raise e
+    
+        return stream_text()
+        
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
         try:
