@@ -53,27 +53,27 @@ def render_paragraph(p: str, render_reference_fn: Callable[[int], str]) -> str:
 
 
 def process_url(
-        url: str,
-        library: Library,
-        anthropic_api_key: str | None = None,
-        assemblyai_api_key: str | None = None,
-        extract_images: bool = False,
-        lang: str | None = None,
-        gemini_api_key: str | None = None,
-    ) -> Content:
-        if not lang:
-            lang = "en"
+    url: str,
+    library: Library,
+    anthropic_api_key: str | None = None,
+    assemblyai_api_key: str | None = None,
+    extract_images: bool = False,
+    lang: str | None = None,
+    gemini_api_key: str | None = None,
+) -> Content:
+    if not lang:
+        lang = "en"
     
-        if gemini_api_key:
-            model_name = "gemini-2.0-pro"
-            api_key = gemini_api_key
-        elif anthropic_api_key:
-            model_name = "anthropic/claude-3-5-sonnet"
-            api_key = anthropic_api_key
-        else:
-            raise ValueError("Either Gemini or Anthropic API key must be provided")
+    if gemini_api_key:
+        model_name = "gemini-2.0-pro"
+        api_key = gemini_api_key
+    elif anthropic_api_key:
+        model_name = "anthropic/claude-3-5-sonnet"
+        api_key = anthropic_api_key
+    else:
+        raise ValueError("Either Gemini or Anthropic API key must be provided")
     
-        llm = plato.llm.get_model(model_name, api_key)
+    llm = plato.llm.get_model(model_name, api_key)
     
     asr = (
         plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
@@ -104,7 +104,6 @@ def process_url(
         pbar.update(1)
 
     return content
-
 
 def prompt_context(
     context: list[Content],
