@@ -64,6 +64,10 @@ def process_url(
     if not lang:
         lang = "en"
     
+    # Debug logging for API keys
+    print(f"Debug: Anthropic API key present: {bool(anthropic_api_key)}", file=sys.stderr)
+    print(f"Debug: Gemini API key present: {bool(gemini_api_key)}", file=sys.stderr)
+    
     # Check for at least one API key
     if not anthropic_api_key and not gemini_api_key:
         raise ValueError("Either Gemini or Anthropic API key must be provided")
@@ -79,10 +83,6 @@ def process_url(
     llm = plato.llm.get_model(model_name, api_key)
     
     # Initialize ASR model only once
-    asr = None
-    if assemblyai_api_key:
-        asr = plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
-    
     asr = (
         plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
         if assemblyai_api_key
@@ -207,8 +207,8 @@ def main():
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
                 extract_images=args.images,
-                gemini_api_key=args.gemini_api_key,
                 lang=lang,
+                gemini_api_key=args.gemini_api_key,  # Add this one line
             )
             for url_or_file in args.inputs
         ]
