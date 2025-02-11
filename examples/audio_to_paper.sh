@@ -88,7 +88,7 @@ URL="$1"
 LANG="en"
 VERBOSE="false"
 IMAGES="false"
-MODEL="gemini"  # Default model
+MODEL="anthropic"  # Changed default from "gemini" to "anthropic"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
