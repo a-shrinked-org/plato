@@ -78,17 +78,11 @@ def process_url(
     
     llm = plato.llm.get_model(model_name, api_key)
     
-    asr = (
-        plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
-        if assemblyai_api_key
-        else None
-    )
+    # Initialize ASR model only once
+    asr = None
+    if assemblyai_api_key:
+        asr = plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
     
-    asr = (
-        plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
-        if assemblyai_api_key
-        else None
-    )
     id = make_filesystem_safe(url)
 
     if library.exists(id):
