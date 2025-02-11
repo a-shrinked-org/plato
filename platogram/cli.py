@@ -209,7 +209,7 @@ def main():
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
                 args.images,
-                lang=lang,
+                lang,
             )
             for url_or_file in args.inputs
         ]
