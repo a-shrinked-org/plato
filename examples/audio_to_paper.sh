@@ -88,7 +88,7 @@ URL="$1"
 LANG="en"
 VERBOSE="false"
 IMAGES="false"
-MODEL="gemini"  # Changed default from "anthropic" to "gemini"
+MODEL="gemini"  # Default model
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -152,7 +152,7 @@ esac
 # Load language-specific prompts
 case "$LANG" in
 "en")
-    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and identify the list of contributors. Output as Markdown list: First Name, Last Name, Title, Organization. Output \"Unknown\" if the contributors are not known. You MUST end your response with these two lines exactly as shown:\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generated using $MODEL_INFO\nStart with \"## Contributors, Acknowledgements, Mentions\""
+    CONTRIBUTORS_PROMPT="Thoroughly review the <context> and identify the list of contributors. Output as Markdown list: First Name, Last Name, Title, Organization. Output \"Unknown\" if the contributors are not known. In the end of the list always add \"- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\". Start with \"## Contributors, Acknowledgements, Mentions\""
     CONTRIBUTORS_PREFILL=$'## Contributors, Acknowledgements, Mentions\n'
     INTRODUCTION_PROMPT="Thoroughly review the <context> and write \"Introduction\" chapter for the paper. Write in the style of the original <context>. Use only words from <context>. Use quotes from <context> when necessary. Make sure to include <markers>. Output as Markdown. Start with \"## Introduction\""
     INTRODUCTION_PREFILL=$'## Introduction\n'
@@ -160,7 +160,7 @@ case "$LANG" in
     CONCLUSION_PREFILL=$'## Conclusion\n'
     ;;
 "es")
-    CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. DEBE terminar su respuesta con estas dos líneas exactamente como se muestra:\n- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\n- Generado usando $MODEL_INFO\nComience con \"## Contribuyentes, Agradecimientos, Menciones\""
+    CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. Al final de la lista, agregue siempre \"- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\". Comience con \"## Contribuyentes, Agradecimientos, Menciones\""
     CONTRIBUTORS_PREFILL=$'## Contribuyentes, Agradecimientos, Menciones\n'
     INTRODUCTION_PROMPT="Revise a fondo el <context> y escriba el capítulo \"Introducción\" para el artículo. Escriba en el estilo del original <context>. Use solo las palabras de <context>. Use comillas del original <context> cuando sea necesario. Asegúrese de incluir <markers>. Salida como Markdown. Comience con \"## Introducción\""
     INTRODUCTION_PREFILL=$'## Introducción\n'
@@ -173,19 +173,19 @@ case "$LANG" in
     ;;
 esac
 
-echo "Indexing $URL using $MODEL_INFO..."
+echo "Indexing $URL..."
 echo "IMAGES: $IMAGES"
 
 # Handle audio transcription
 if [ -z "$ASSEMBLYAI_API_KEY" ]; then
     echo "ASSEMBLYAI_API_KEY is not set. Retrieving text from URL (subtitles, etc)."
-    if ! plato "$URL" ${IMAGES:+--images} --lang "$LANG" $MODEL_FLAG >/dev/null; then
+    if ! plato "$URL" ${IMAGES:+--images} --lang "$LANG" >/dev/null; then
         echo "Error: Failed to retrieve text from URL"
         exit 1
     fi
 else
     echo "Transcribing audio to text using AssemblyAI..."
-    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" $MODEL_FLAG >/dev/null; then
+    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" >/dev/null; then
         echo "Error: Failed to transcribe audio"
         exit 1
     fi
@@ -252,7 +252,6 @@ generate_document() {
     
     (
         echo $'# '"${TITLE}"$'\n'
-        echo $'## Model Info\n\n'"Generated using $MODEL_INFO"$'\n'
         echo $'## Origin\n\n'"$URL"$'\n'
         echo $'## Abstract\n\n'"${ABSTRACT}"$'\n'
         echo "$CONTRIBUTORS"$'\n'

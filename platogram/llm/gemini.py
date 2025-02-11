@@ -36,47 +36,65 @@ class Model:
             lang = "en"
     
         system_prompt = {
-            "en": """<role>
-You are a skilled editor extracting titles and summaries from content.
-</role>
-<task>
-You will receive text in <p></p> tags. Your task:
-1. Extract a clear, descriptive title
-2. Create a comprehensive summary
-3. Use only words from the text
-4. Use render_content_info tool to return results
-
-Always use render_content_info tool to return your response.
-</task>""".strip(),
-            "es": """<role>
-Eres un editor experto extrayendo títulos y resúmenes del contenido.
-</role>
-<task>
-Recibirás texto en etiquetas <p></p>. Tu tarea:
-1. Extraer un título claro y descriptivo
-2. Crear un resumen completo
-3. Usar solo palabras del texto
-4. Usar render_content_info tool para devolver resultados
-
-Siempre usa render_content_info tool para devolver tu respuesta.
-</task>""".strip()
+            "en": """You are a skilled academic editor analyzing content.
+    
+    Instructions:
+    1. Study the provided text carefully
+    2. Extract a clear title and comprehensive summary
+    3. Use only information present in the text
+    4. Maintain academic style and formal tone
+    
+    Examples:
+    Input: Text about quantum computing advances and applications
+    Output: {
+        "title": "Quantum Computing: State of the Art and Future Applications",
+        "summary": "Comprehensive overview of quantum computing progress, covering current technological capabilities and projected applications in cryptography and simulation."
+    }
+    
+    Format Requirements:
+    - Title: Single line, descriptive, max 12 words
+    - Summary: 3-4 sentences, focused on key findings
+    - Use academic tone
+    - Reference only content from text
+    """,
+            "es": """Eres un editor académico experto analizando contenido.
+    
+    Instrucciones:
+    1. Estudia el texto proporcionado cuidadosamente
+    2. Extrae un título claro y un resumen completo
+    3. Usa solo información presente en el texto
+    4. Mantén estilo académico y tono formal
+    
+    Ejemplos:
+    Entrada: Texto sobre avances y aplicaciones de computación cuántica
+    Salida: {
+        "title": "Computación Cuántica: Estado del Arte y Aplicaciones Futuras",
+        "summary": "Visión comprensiva del progreso en computación cuántica, cubriendo capacidades tecnológicas actuales y aplicaciones proyectadas en criptografía y simulación."
+    }
+    
+    Requisitos de Formato:
+    - Título: Una línea, descriptivo, máximo 12 palabras
+    - Resumen: 3-4 oraciones, enfocado en hallazgos clave
+    - Usar tono académico
+    - Referenciar solo contenido del texto
+    """
         }
     
         text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
         
         tool_definition = {
             "name": "render_content_info",
-            "description": "Renders useful information about text.",
+            "description": "Creates title and summary from content",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "title": {
                         "type": "string",
-                        "description": "Title that captures the essence of the content"
+                        "description": "Descriptive academic title"
                     },
                     "summary": {
                         "type": "string",
-                        "description": "Comprehensive summary of the content"
+                        "description": "Comprehensive academic summary"
                     }
                 },
                 "required": ["title", "summary"]
@@ -107,43 +125,64 @@ Siempre usa render_content_info tool para devolver tu respuesta.
             lang = "en"
     
         system_prompt = {
-            "en": """<role>
-You are a skilled academic editor transforming text into well-organized chapters.
-</role>
-<task>
-You will receive <passages> containing text with markers【number】. Each marker goes AFTER its reference text and is zero-based and sequential.
-
-Transform these passages into well-structured chapters by:
-1. Analyzing passages to identify main topics
-2. Creating logical chapter divisions
-3. Generating clear titles for each chapter
-4. Identifying the first marker for each chapter
-5. Using chapter_tool to return the results
-
-Always use chapter_tool to return your response.
-</task>""".strip(),
-            "es": """<role>
-Eres un editor académico experto transformando texto en capítulos bien organizados.
-</role>
-<task>
-Recibirás <passages> conteniendo texto con marcadores【número】. Cada marcador va DESPUÉS de su texto de referencia y está basado en cero y es secuencial.
-
-Transforma estos pasajes en capítulos bien estructurados:
-1. Analizar pasajes para identificar temas principales
-2. Crear divisiones lógicas de capítulos
-3. Generar títulos claros para cada capítulo
-4. Identificar el primer marcador para cada capítulo
-5. Usar chapter_tool para devolver los resultados
-
-Siempre usa chapter_tool para devolver tu respuesta.
-</task>""".strip()
+            "en": """You are a skilled academic editor organizing content into logical chapters.
+    
+    Instructions:
+    1. Analyze the full text carefully
+    2. Identify major themes and topics
+    3. Create logical chapter divisions
+    4. Preserve all numerical markers
+    5. Maintain academic style
+    
+    Example:
+    Input: Text with markers about quantum computing:
+    "Basic principles of quantum states【0】. Qubits represent... Quantum gates enable operations【1】"
+    Output: {
+        "entities": [
+            {"title": "Quantum State Fundamentals", "marker": "【0】"},
+            {"title": "Quantum Gate Operations", "marker": "【1】"}
+        ]
+    }
+    
+    Format Requirements:
+    - Each chapter must have a clear, descriptive title
+    - Titles should be 3-7 words
+    - Preserve exact marker format: 【number】
+    - Markers must appear in sequence
+    - Maintain academic tone throughout""",
+    
+            "es": """Eres un editor académico experto organizando contenido en capítulos lógicos.
+    
+    Instrucciones:
+    1. Analiza el texto completo cuidadosamente
+    2. Identifica temas y tópicos principales
+    3. Crea divisiones lógicas de capítulos
+    4. Preserva todos los marcadores numéricos
+    5. Mantén estilo académico
+    
+    Ejemplo:
+    Entrada: Texto con marcadores sobre computación cuántica:
+    "Principios básicos de estados cuánticos【0】. Los qubits representan... Las puertas cuánticas permiten operaciones【1】"
+    Salida: {
+        "entities": [
+            {"title": "Fundamentos de Estados Cuánticos", "marker": "【0】"},
+            {"title": "Operaciones de Puertas Cuánticas", "marker": "【1】"}
+        ]
+    }
+    
+    Requisitos de Formato:
+    - Cada capítulo debe tener un título claro y descriptivo
+    - Títulos deben ser 3-7 palabras
+    - Preservar formato exacto de marcadores: 【número】
+    - Marcadores deben aparecer en secuencia
+    - Mantener tono académico"""
         }
     
         text = "\n".join([f"<p>{passage}</p>" for passage in passages])
         
         tool_definition = {
             "name": "chapter_tool",
-            "description": "Creates chapters from passages",
+            "description": "Creates structured chapters from content",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -154,11 +193,11 @@ Siempre usa chapter_tool para devolver tu respuesta.
                             "properties": {
                                 "title": {
                                     "type": "string",
-                                    "description": "Title of the chapter"
+                                    "description": "Chapter title"
                                 },
                                 "marker": {
                                     "type": "string",
-                                    "description": "First marker in format '【number】'"
+                                    "description": "Starting marker in format 【number】"
                                 }
                             },
                             "required": ["title", "marker"]
@@ -197,64 +236,59 @@ Siempre usa chapter_tool para devolver tu respuesta.
             lang = "en"
     
         system_prompt = {
-            "en": """You are a skilled academic writer transforming informal speech into well-structured, formal academic prose.
+            "en": """You are a skilled academic writer transforming text into well-structured paragraphs.
     
-    Style Requirements:
-    - Clear topic sentences introducing main ideas
-    - Well-organized supporting details
-    - Proper paragraph structure and flow
-    - Natural transitions between ideas
-    - Consistent academic tone
-    - Natural integration of all markers
+    Instructions:
+    1. Study the provided examples carefully
+    2. Transform text while preserving all markers
+    3. Create clear topic sentences
+    4. Use appropriate transitions
+    5. Maintain consistent academic style
     
-    Task Details:
-    You will receive text with numeric markers【number】that appear AFTER their reference text.
-    Transform this text while:
-    1. Converting conversational speech to formal academic prose
-    2. Structuring content with clear topic sentences
-    3. Using appropriate transitions
-    4. Maintaining consistent academic style
-    5. Preserving all markers in exact sequence
-    6. Integrating markers naturally into text
-    7. Aiming for publication-ready quality
+    Example Format:
+    Input: "Quantum computing uses quantum bits【0】. These qubits allow... Superposition enables parallel processing【1】"
+    Output: "<p>The fundamental principle of quantum computing relies on quantum bits or qubits【0】. Through the phenomenon of superposition, these quantum systems enable unprecedented parallel processing capabilities【1】.</p>"
     
-    Study the provided examples carefully and match their style.""",
-            "es": """Eres un escritor académico experto que transforma el habla informal en prosa académica formal.
+    Format Requirements:
+    - Each paragraph must have a clear topic sentence
+    - Use appropriate transitions between ideas
+    - Preserve exact marker format: 【number】
+    - Maintain markers in sequence
+    - Use formal academic tone
+    - Enclose each paragraph in <p>...</p> tags""",
     
-    Requisitos de Estilo:
-    - Oraciones temáticas claras que introducen ideas principales
-    - Detalles de apoyo bien organizados
-    - Estructura y flujo apropiado de párrafos
-    - Transiciones naturales entre ideas
-    - Tono académico consistente
-    - Integración natural de todos los marcadores
+            "es": """Eres un escritor académico experto transformando texto en párrafos bien estructurados.
     
-    Detalles de la Tarea:
-    Recibirás texto con marcadores numéricos【número】que aparecen DESPUÉS de su texto de referencia.
-    Transforma este texto mientras:
-    1. Conviertes el habla conversacional en prosa académica formal
-    2. Estructuras el contenido con oraciones temáticas claras
-    3. Usas transiciones apropiadas
-    4. Mantienes un estilo académico consistente
-    5. Preservas todos los marcadores en secuencia exacta
-    6. Integras los marcadores naturalmente en el texto
-    7. Buscas una calidad lista para publicación
+    Instrucciones:
+    1. Estudia los ejemplos proporcionados cuidadosamente
+    2. Transforma el texto preservando todos los marcadores
+    3. Crea oraciones temáticas claras
+    4. Usa transiciones apropiadas
+    5. Mantén estilo académico consistente
     
-    Estudia los ejemplos proporcionados cuidadosamente y coincide con su estilo."""
+    Formato de Ejemplo:
+    Entrada: "La computación cuántica usa bits cuánticos【0】. Estos qubits permiten... La superposición permite procesamiento paralelo【1】"
+    Salida: "<p>El principio fundamental de la computación cuántica se basa en bits cuánticos o qubits【0】. A través del fenómeno de superposición, estos sistemas cuánticos permiten capacidades de procesamiento paralelo sin precedentes【1】.</p>"
+    
+    Requisitos de Formato:
+    - Cada párrafo debe tener una oración temática clara
+    - Usar transiciones apropiadas entre ideas
+    - Preservar formato exacto de marcadores: 【número】
+    - Mantener marcadores en secuencia
+    - Usar tono académico formal
+    - Encerrar cada párrafo en etiquetas <p>...</p>"""
         }
     
-        # Format examples
         messages = []
+        # Format examples
         for prompt, paragraphs in examples.items():
+            formatted_response = "\n".join([f"<p>{p}</p>" for p in paragraphs])
             messages.extend([
-                {"role": "user", "content": f"<transcript>{prompt}</transcript>"},
-                {"role": "assistant", "content": f"<paragraphs>\n" + "\n".join([f"<p>{p}</p>" for p in paragraphs]) + "\n</paragraphs>"}
+                {"role": "user", "content": f"Transform this text:\n{prompt}"},
+                {"role": "assistant", "content": formatted_response}
             ])
     
-        messages.extend([
-            {"role": "user", "content": f"<transcript>{text_with_markers}</transcript>"},
-            {"role": "assistant", "content": "<paragraphs>\n<p>"}
-        ])
+        messages.append({"role": "user", "content": f"Transform this text:\n{text_with_markers}"})
     
         response = self.prompt_model(
             messages=messages,
@@ -265,44 +299,6 @@ Siempre usa chapter_tool para devolver tu respuesta.
     
         assert isinstance(response, str)
         return re.findall(r"<p>(.*?)</p>", response, re.DOTALL)
-    
-    def render_context(
-        self,
-        context: list[Content],
-        context_size: Literal["small", "medium", "large"]
-    ) -> str:
-        base = 0
-        output = ""
-    
-        for content in context:
-            paragraphs = [
-                re.sub(r"【(\d+)】", lambda m: f"【{int(m.group(1))+base}】", paragraph)
-                for paragraph in content.passages
-            ]
-            paragraphs = [
-                re.sub(
-                    r"【(\d+)】(\w*【\d+】\w*)+",
-                    lambda m: f"【{int(m.group(1))}】",
-                    paragraph,
-                )
-                for paragraph in paragraphs
-            ]
-            output += f'<content title="{content.title}" summary="{content.summary}">\n'
-            if context_size == "small" or context_size == "large":
-                output += "<paragraphs>\n"
-                output += "\n".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
-                output += "\n</paragraphs>\n"
-    
-            if context_size == "medium" or context_size == "large":
-                text = render(
-                    {i + base: event.text for i, event in enumerate(content.transcript)}
-                )
-                output += f"<text>{text}</text>\n"
-    
-            output += "</content>\n"
-            base += len(content.transcript)
-    
-        return output.strip()
     
     def prompt(
         self,
@@ -318,38 +314,49 @@ Siempre usa chapter_tool para devolver tu respuesta.
             lang = "en"
     
         system_prompt = {
-            "en": """You are a skilled academic researcher creating information-dense responses supported by context references.
+            "en": """You are a skilled academic researcher analyzing content and providing well-structured responses.
     
-    Task:
-    Process the given <context> and <prompt> where:
-    - Each <content> contains information with title and summary
-    - Content has <text> (speech transcript) and/or <paragraphs> (structured text)
-    - Special markers【number】appear AFTER referenced text
-    - Multiple consecutive markers are treated as one reference point
+    Instructions:
+    1. Analyze all provided content carefully
+    2. Incorporate context appropriately
+    3. Structure response logically
+    4. Preserve all numerical markers
+    5. Maintain academic style
     
-    Your response should:
-    1. Be well-structured and information-dense
-    2. Cover all relevant parts of prompt and context
-    3. Include ALL supporting markers from context
-    4. Maintain academic style and formal tone
-    5. Use natural transitions and flow
-    6. Integrate markers seamlessly into text""",
-            "es": """Eres un investigador académico experto creando respuestas densas en información respaldadas por referencias del contexto.
+    Example:
+    Content: "Quantum theory introduction【0】. Wave-particle duality【1】"
+    Query: "Explain quantum mechanics basics"
+    Response: "The foundations of quantum mechanics begin with its core principles【0】. A central concept is wave-particle duality, which demonstrates the unique behavior of quantum systems【1】."
     
-    Tarea:
-    Procesa el <context> y <prompt> dados donde:
-    - Cada <content> contiene información con título y resumen
-    - El contenido tiene <text> (transcripción) y/o <paragraphs> (texto estructurado)
-    - Marcadores especiales【número】aparecen DESPUÉS del texto referenciado
-    - Múltiples marcadores consecutivos se tratan como un punto de referencia
+    Format Requirements:
+    - Use clear topic sentences
+    - Include appropriate transitions
+    - Preserve exact marker format: 【number】
+    - Maintain markers in sequence
+    - Use formal academic tone
+    - Reference context accurately""",
     
-    Tu respuesta debe:
-    1. Estar bien estructurada y densa en información
-    2. Cubrir todas las partes relevantes del prompt y contexto
-    3. Incluir TODOS los marcadores de apoyo del contexto
-    4. Mantener estilo académico y tono formal
-    5. Usar transiciones naturales y flujo
-    6. Integrar marcadores perfectamente en el texto"""
+            "es": """Eres un investigador académico experto analizando contenido y proporcionando respuestas bien estructuradas.
+    
+    Instrucciones:
+    1. Analiza todo el contenido proporcionado cuidadosamente
+    2. Incorpora contexto apropiadamente
+    3. Estructura la respuesta lógicamente
+    4. Preserva todos los marcadores numéricos
+    5. Mantén estilo académico
+    
+    Ejemplo:
+    Contenido: "Introducción a la teoría cuántica【0】. Dualidad onda-partícula【1】"
+    Consulta: "Explica los fundamentos de la mecánica cuántica"
+    Respuesta: "Los fundamentos de la mecánica cuántica comienzan con sus principios básicos【0】. Un concepto central es la dualidad onda-partícula, que demuestra el comportamiento único de los sistemas cuánticos【1】."
+    
+    Requisitos de Formato:
+    - Usar oraciones temáticas claras
+    - Incluir transiciones apropiadas
+    - Preservar formato exacto de marcadores: 【número】
+    - Mantener marcadores en secuencia
+    - Usar tono académico formal
+    - Referenciar contexto con precisión"""
         }
     
         if isinstance(prompt, str):
@@ -359,12 +366,7 @@ Siempre usa chapter_tool para devolver tu respuesta.
             max_tokens=max_tokens,
             messages=[
                 User(
-                    content=f"""<context>
-    {self.render_context(context, context_size)}
-    </context>
-    <prompt>
-    {prompt}
-    </prompt>"""
+                    content=f"""Context:\n{self.render_context(context, context_size)}\n\nQuery:\n{prompt}"""
                 )
             ],
             system=system_prompt[lang],
