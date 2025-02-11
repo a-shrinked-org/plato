@@ -2,43 +2,40 @@ import os
 import re
 import time
 from typing import Any, Generator, Literal, Sequence
-import google.generativeai as genai
+
+from google import genai
+from google.genai import types
+
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
 
 class Model:
     def __init__(self, model: str, key: str | None = None) -> None:
-        if key is None:
-            key = os.environ["GOOGLE_API_KEY"]
-
-        # Configure the Gemini client
-        genai.configure(api_key=key)
-
-        # Default generation config matching Google's best practices
-        self.generation_config = {
-            "temperature": 0.1,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 4096,
-            "response_mime_type": "text/plain",
-        }
-
-        # Normalize model name and handle different formats
-        model = model.replace("gemini-2-pro", "gemini-2.0-pro")
-        model = model.replace("gemini-2.0", "gemini-2.0-pro")  # Handle shell script format
-        
-        if model == "gemini-2.0-pro":
-            self.model = genai.GenerativeModel(
-                model_name="gemini-2.0-pro",
-                generation_config=self.generation_config
-            )
-        elif model == "gemini-2.0-flash":
-            self.model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash",
-                generation_config=self.generation_config
-            )
-        else:
-            raise ValueError(f"Unknown model: {model}. Expected 'gemini-2.0-pro' or 'gemini-2.0-flash'")
+    if key is None:
+        key = os.environ["GOOGLE_API_KEY"]
+    
+    # Configure the Gemini client
+    genai.configure(api_key=key)
+    
+    # Default generation config matching Google's best practices
+    self.generation_config = {
+        "temperature": 0.1,
+        "top_p": 0.95,
+        "top_k": 40,
+        "max_output_tokens": 4096,
+        "response_mime_type": "text/plain",
+    }
+    
+    # Normalize model name and handle different formats
+    if "flash" in model.lower():
+        model_name = "gemini-2.0-flash-001"
+    else:
+        model_name = "gemini-2.0-pro-001"
+    
+    self.model = genai.GenerativeModel(
+        model_name=model_name,
+        generation_config=self.generation_config
+    )
 
     def prompt_model(
         self,
@@ -49,78 +46,53 @@ class Model:
         system: str | None = None,
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
+    
         # Update generation config for this request
-        generation_config = self.generation_config.copy()
-        generation_config["temperature"] = temperature
-        generation_config["max_output_tokens"] = max_tokens
-
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens
+        )
+        
         # Convert messages to Gemini format
         contents = []
         if system:
-            contents.append({
-                "role": "user",
-                "parts": [{"text": f"System: {system}"}]
-            })
+            contents.append(types.Content(
+                parts=[types.Part.from_text(f"System: {system}")],
+                role="user"
+            ))
         
         for m in messages:
-            # Handle both dict and User/Assistant objects
-            if isinstance(m, dict):
-                role = m.get("role", "user")
-                content = m.get("content", "")
-            else:
-                # Handle User/Assistant objects
-                role = "user" if isinstance(m, User) else "model"
-                content = m.content if not hasattr(m, 'cache') else {
-                    "text": m.content, 
-                    "cache_control": "ephemeral"
-                }
+            role = "user" if isinstance(m, User) else "model"
+            content = m.content if not hasattr(m, 'cache') else {
+                "text": m.content, 
+                "cache_control": "ephemeral"
+            }
+            
+            contents.append(types.Content(
+                parts=[types.Part.from_text(str(content))],
+                role=role
+            ))
         
-            contents.append({
-                "role": role,
-                "parts": [{"text": str(content)}]
-            })
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=config,
+            tools=tools,
+        )
         
-        max_retries = 3
-        backoff = 2
+        if stream:
+            def stream_text():
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+            return stream_text()
         
-        for attempt in range(max_retries):
-            try:
-                # Create chat session if needed for multiple messages
-                if len(contents) > 1 or stream:
-                    chat = self.model.start_chat(history=contents[:-1])
-                    response = chat.send_message(
-                        contents[-1]["parts"][0]["text"],
-                        generation_config=generation_config,
-                        tools=tools,
-                        stream=stream
-                    )
-                else:
-                    response = self.model.generate_content(
-                        contents[0]["parts"][0]["text"],
-                        generation_config=generation_config,
-                        tools=tools,
-                        stream=stream
-                    )
+        # Handle function calling/tools response
+        if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
+            return response.candidates[0].content.parts[0].function_call.args
         
-                if stream:
-                    def stream_text():
-                        for chunk in response:
-                            if hasattr(chunk, 'text'):
-                                yield chunk.text
-                    return stream_text()
-        
-                # Handle function calling/tools response
-                if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
-                    return response.candidates[0].content.parts[0].function_call.args
-        
-                # Handle regular text response
-                return response.text
-        
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(backoff ** attempt)
-                continue
+        # Handle regular text response
+        return response.text
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
