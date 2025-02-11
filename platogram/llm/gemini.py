@@ -1,8 +1,6 @@
 import os
 import re
-
-import time 
-
+import time
 from typing import Any, Generator, Literal, Sequence
 import google.generativeai as genai
 from platogram.ops import render
@@ -16,14 +14,119 @@ class Model:
         # Configure the Gemini client
         genai.configure(api_key=key)
 
-        if model == "gemini-2-pro":
-            self.model = "gemini-2.0-pro-exp-02-05"
-        elif model == "gemini-2-flash":
-            self.model = "gemini-2.0-flash-exp"
-        else:
-            raise ValueError(f"Unknown model: {model}")
+        # Default generation config matching Google's best practices
+        self.generation_config = {
+            "temperature": 0.1,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 4096,
+            "response_mime_type": "text/plain",
+        }
 
-        self.client = genai.GenerativeModel(model_name=self.model)
+        # Normalize model name and handle different formats
+        model = model.replace("gemini-2-pro", "gemini-2.0-pro")
+        model = model.replace("gemini-2.0", "gemini-2.0-pro")  # Handle shell script format
+        
+        if model == "gemini-2.0-pro":
+            self.model = genai.GenerativeModel(
+                model_name="gemini-2.0-pro",
+                generation_config=self.generation_config
+            )
+        elif model == "gemini-2.0-flash":
+            self.model = genai.GenerativeModel(
+                model_name="gemini-2.0-flash",
+                generation_config=self.generation_config
+            )
+        else:
+            raise ValueError(f"Unknown model: {model}. Expected 'gemini-2.0-pro' or 'gemini-2.0-flash'")
+
+    def prompt_model(
+        self,
+        messages: Sequence[User | Assistant],
+        max_tokens: int = 4096,
+        temperature: float = 0.1,
+        stream: bool = False,
+        system: str | None = None,
+        tools: list[dict] | None = None,
+    ) -> str | dict[str, str] | Generator[str, None, None]:
+        # Update generation config for this request
+        generation_config = self.generation_config.copy()
+        generation_config["temperature"] = temperature
+        generation_config["max_output_tokens"] = max_tokens
+
+        # Convert messages to Gemini format
+        contents = []
+        if system:
+            contents.append({
+                "role": "user",
+                "parts": [{"text": f"System: {system}"}]
+            })
+
+        for m in messages:
+            # Handle both text and structured content
+            if hasattr(m, 'cache') and m.cache:
+                content = {"text": m.content, "cache_control": "ephemeral"}
+            else:
+                content = m.content
+
+            contents.append({
+                "role": "user" if isinstance(m, User) else "model",
+                "parts": [{"text": content}]
+            })
+
+        max_retries = 3
+        backoff = 2
+
+        for attempt in range(max_retries):
+            try:
+                # Create chat session if needed for multiple messages
+                if len(contents) > 1 or stream:
+                    chat = self.model.start_chat(history=contents[:-1])
+                    response = chat.send_message(
+                        contents[-1]["parts"][0]["text"],
+                        generation_config=generation_config,
+                        tools=tools,
+                        stream=stream
+                    )
+                else:
+                    response = self.model.generate_content(
+                        contents[0]["parts"][0]["text"],
+                        generation_config=generation_config,
+                        tools=tools,
+                        stream=stream
+                    )
+
+                if stream:
+                    def stream_text():
+                        for chunk in response:
+                            if hasattr(chunk, 'text'):
+                                yield chunk.text
+                    return stream_text()
+
+                # Handle function calling/tools response
+                if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
+                    return response.candidates[0].content.parts[0].function_call.args
+
+                # Handle regular text response
+                return response.text
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(backoff ** attempt)
+                continue
+
+    def count_tokens(self, text: str) -> int:
+        """Count tokens for a given text using Gemini's API"""
+        try:
+            result = self.model.count_tokens(text)
+            return result.total_tokens
+        except Exception as e:
+            # Fallback to rough estimation if API fails
+            return len(text.split()) * 2  # Rough approximation
+
+    # Rest of your class methods remain the same, just now using the updated prompt_model implementation
+    # (get_meta, get_chapters, get_paragraphs, prompt, render_context)
         
     def get_meta(
         self,
@@ -375,79 +478,3 @@ class Model:
         
         assert isinstance(response, str)
         return response
-
-    def count_tokens(self, text: str) -> int:
-        """Count tokens for a given text using Gemini's API"""
-        try:
-            return self.client.count_tokens(text).total_tokens
-        except Exception as e:
-            # Fallback to rough estimation if API fails
-            return len(text.split()) * 2  # Rough approximation
-
-    def prompt_model(
-        self,
-        messages: Sequence[User | Assistant],
-        max_tokens: int = 4096,
-        temperature=0.1,
-        stream=False,
-        system: str | None = None,
-        tools: list[dict] | None = None,
-    ) -> str | dict[str, str] | Generator[str, None, None]:
-        # Convert messages to Gemini format
-        gemini_messages = []
-        if system:
-            gemini_messages.append({"role": "system", "content": system})
-        
-        for m in messages:
-            # Handle both text and structured content
-            content = m.content
-            if hasattr(m, 'cache') and m.cache:
-                # Handle cached content similar to Anthropic's ephemeral caching
-                content = {"text": m.content, "cache_control": "ephemeral"}
-            
-            gemini_messages.append({
-                "role": "user" if isinstance(m, User) else "assistant",
-                "content": content
-            })
-
-        max_retries = 3
-        backoff = 2
-
-        for attempt in range(max_retries):
-            try:
-                response = self.client.generate_content(
-                    gemini_messages,
-                    generation_config={
-                        "max_output_tokens": max_tokens,
-                        "temperature": temperature,
-                        "candidate_count": 1,
-                    },
-                    tools=tools if tools else None,
-                    stream=stream
-                )
-
-                if stream:
-                    def stream_text():
-                        for chunk in response:
-                            if hasattr(chunk, 'text'):
-                                yield chunk.text
-                    return stream_text()
-
-                # Handle function calling/tools response
-                if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                    function_call = response.candidates[0].content.parts[0].function_call
-                    return function_call.args
-                
-                # Handle regular text response
-                if hasattr(response, 'text'):
-                    return response.text
-                elif hasattr(response, 'candidates') and len(response.candidates) > 0:
-                    return response.candidates[0].content.text
-
-                raise ValueError(f"Unexpected response format: {response}")
-
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(backoff ** attempt)
-                continue
