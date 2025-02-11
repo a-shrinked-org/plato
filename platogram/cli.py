@@ -208,7 +208,7 @@ def main():
                 args.gemini_api_key,
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
-                extract_images=args.images,
+                args.images,
                 lang=lang,
             )
             for url_or_file in args.inputs
