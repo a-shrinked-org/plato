@@ -56,6 +56,18 @@ class Model:
             temperature=temperature,
             max_output_tokens=max_tokens
         )
+        
+        # Convert tools to proper format if they exist
+        if tools:
+            tool_config = []
+            for tool in tools:
+                function_decl = types.FunctionDeclaration(
+                    name=tool["name"],
+                    description=tool.get("description", ""),
+                    parameters=types.Schema(**tool["parameters"])
+                )
+                tool_config.append(types.Tool(function_declarations=[function_decl]))
+            config.tools = tool_config
     
         # Convert messages to Gemini format
         contents = []
@@ -65,7 +77,6 @@ class Model:
                 role="user"
             ))
         
-        # Format messages, handling both dict and User/Assistant objects
         for m in messages:
             if isinstance(m, dict):
                 role = m.get("role", "user")
@@ -91,12 +102,11 @@ class Model:
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=contents,
-                        config=config,
-                        tools=tools,
+                        config=config
                     )
                     
                     # Handle function calling/tools response
-                    if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
+                    if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
                         return response.candidates[0].content.parts[0].function_call.args
                     
                     return response.text
@@ -107,14 +117,12 @@ class Model:
                     time.sleep(backoff ** attempt)
                     continue
         
-        # Streaming implementation
         def stream_text():
             try:
                 response = self.client.models.generate_content(
                     model=self.model_name,
                     contents=contents,
                     config=config,
-                    tools=tools,
                     stream=True
                 )
                 
