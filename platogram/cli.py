@@ -83,6 +83,11 @@ def process_url(
     if assemblyai_api_key:
         asr = plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
     
+    asr = (
+        plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
+        if assemblyai_api_key
+        else None
+    )
     id = make_filesystem_safe(url)
 
     if library.exists(id):
@@ -197,13 +202,13 @@ def main():
         ids = [make_filesystem_safe(url_or_file) for url_or_file in args.inputs]
         context = [
             process_url(
-                url_or_file,
-                library,
-                args.gemini_api_key,
-                args.anthropic_api_key,
-                args.assemblyai_api_key,
-                args.images,
-                lang,
+                url_or_file=url_or_file,
+                library=library,
+                anthropic_api_key=args.anthropic_api_key,
+                assemblyai_api_key=args.assemblyai_api_key,
+                extract_images=args.images,
+                lang=lang,
+                gemini_api_key=args.gemini_api_key
             )
             for url_or_file in args.inputs
         ]
