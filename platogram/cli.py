@@ -64,21 +64,15 @@ def process_url(
     if not lang:
         lang = "en"
     
+    # For testing: Use hardcoded Gemini key if gemini_api_key is None
+    test_gemini_key = "AIzaSyCCvPlm9mjhUv2kzuJwV36eiZJ2x6B7ovM"
+    gemini_api_key = gemini_api_key or test_gemini_key
+    
     # Debug logging for API keys
-    print(f"Debug: Anthropic API key present: {bool(anthropic_api_key)}", file=sys.stderr)
-    print(f"Debug: Gemini API key present: {bool(gemini_api_key)}", file=sys.stderr)
+    print(f"Debug: Using Gemini key for testing", file=sys.stderr)
     
-    # Check for at least one API key
-    if not anthropic_api_key and not gemini_api_key:
-        raise ValueError("Either Gemini or Anthropic API key must be provided")
-    
-    # Priority to Gemini if both keys are present
-    if gemini_api_key:
-        model_name = "gemini/gemini-2.0"
-        api_key = gemini_api_key
-    else:
-        model_name = "anthropic/claude-3-5-sonnet"
-        api_key = anthropic_api_key
+    model_name = "gemini/gemini-2.0-pro"  # Use Pro version
+    api_key = gemini_api_key
     
     llm = plato.llm.get_model(model_name, api_key)
     
@@ -88,6 +82,7 @@ def process_url(
         if assemblyai_api_key
         else None
     )
+    
     id = make_filesystem_safe(url)
 
     if library.exists(id):
