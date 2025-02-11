@@ -65,40 +65,49 @@ class Model:
                 role="user"
             ))
         
-        # Format messages similar to Anthropic's style
+        # Format messages, handling both dict and User/Assistant objects
         for m in messages:
-            if hasattr(m, 'cache') and m.cache:
-                content = {
+            if isinstance(m, dict):
+                role = m.get("role", "user")
+                content = m.get("content", "")
+            else:
+                role = "user" if isinstance(m, User) else "model"
+                content = m.content if not hasattr(m, 'cache') else {
                     "text": m.content,
                     "cache_control": "ephemeral"
                 }
-            else:
-                content = m.content
-    
+            
             contents.append(types.Content(
                 parts=[{"text": str(content)}],
-                role="user" if isinstance(m, User) else "model"
+                role=role
             ))
     
         if not stream:
-            @RETRY
-            def get_response():
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=contents,
-                    config=config,
-                    tools=tools,
-                )
-                
-                # Handle function calling/tools response similar to Anthropic
-                if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                    return response.candidates[0].content.parts[0].function_call.args
-                
-                return response.text
-                
-            return get_response()
+            max_retries = 3
+            backoff = 2
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=contents,
+                        config=config,
+                        tools=tools,
+                    )
+                    
+                    # Handle function calling/tools response
+                    if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
+                        return response.candidates[0].content.parts[0].function_call.args
+                    
+                    return response.text
+                    
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    time.sleep(backoff ** attempt)
+                    continue
         
-        # Streaming implementation similar to Anthropic
+        # Streaming implementation
         def stream_text():
             try:
                 response = self.client.models.generate_content(
@@ -109,14 +118,10 @@ class Model:
                     stream=True
                 )
                 
-                @RETRY
-                def get_response():
-                    for chunk in response:
-                        if chunk.text:
-                            yield chunk.text
-                
-                return get_response()
-                
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+                        
             except Exception as e:
                 raise e
     
