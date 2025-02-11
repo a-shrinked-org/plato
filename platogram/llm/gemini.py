@@ -9,33 +9,38 @@ from google.genai import types
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
 
+import os
+import re
+import time
+from typing import Any, Generator, Literal, Sequence
+
+from google import genai
+from google.genai import types
+
+from platogram.ops import render
+from platogram.types import Assistant, Content, User
+
 class Model:
     def __init__(self, model: str, key: str | None = None) -> None:
-    if key is None:
-        key = os.environ["GOOGLE_API_KEY"]
-    
-    # Configure the Gemini client
-    genai.configure(api_key=key)
-    
-    # Default generation config matching Google's best practices
-    self.generation_config = {
-        "temperature": 0.1,
-        "top_p": 0.95,
-        "top_k": 40,
-        "max_output_tokens": 4096,
-        "response_mime_type": "text/plain",
-    }
-    
-    # Normalize model name and handle different formats
-    if "flash" in model.lower():
-        model_name = "gemini-2.0-flash-001"
-    else:
-        model_name = "gemini-2.0-pro-001"
-    
-    self.model = genai.GenerativeModel(
-        model_name=model_name,
-        generation_config=self.generation_config
-    )
+        if key is None:
+            key = os.environ["GOOGLE_API_KEY"]
+        
+        # Create the Gemini client
+        self.client = genai.Client(api_key=key)
+
+        # Normalize model name and handle different formats
+        if "flash" in model.lower():
+            self.model_name = "gemini-2.0-flash-001"
+        else:
+            self.model_name = "gemini-2.0-pro-001"
+        
+        # Default generation config
+        self.generation_config = types.GenerateContentConfig(
+            temperature=0.1,
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=4096,
+        )
 
     def prompt_model(
         self,
@@ -46,13 +51,12 @@ class Model:
         system: str | None = None,
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
-    
         # Update generation config for this request
         config = types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=max_tokens
         )
-        
+
         # Convert messages to Gemini format
         contents = []
         if system:
@@ -62,48 +66,66 @@ class Model:
             ))
         
         for m in messages:
-            role = "user" if isinstance(m, User) else "model"
-            content = m.content if not hasattr(m, 'cache') else {
-                "text": m.content, 
-                "cache_control": "ephemeral"
-            }
+            # Handle both dict and User/Assistant objects
+            if isinstance(m, dict):
+                role = m.get("role", "user")
+                content = m.get("content", "")
+            else:
+                role = "user" if isinstance(m, User) else "model"
+                content = m.content if not hasattr(m, 'cache') else {
+                    "text": m.content, 
+                    "cache_control": "ephemeral"
+                }
             
             contents.append(types.Content(
                 parts=[types.Part.from_text(str(content))],
                 role=role
             ))
+
+        max_retries = 3
+        backoff = 2
         
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=contents,
-            config=config,
-            tools=tools,
-        )
-        
-        if stream:
-            def stream_text():
-                for chunk in response:
-                    if chunk.text:
-                        yield chunk.text
-            return stream_text()
-        
-        # Handle function calling/tools response
-        if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
-            return response.candidates[0].content.parts[0].function_call.args
-        
-        # Handle regular text response
-        return response.text
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config,
+                    tools=tools,
+                )
+                
+                if stream:
+                    def stream_text():
+                        for chunk in response:
+                            if chunk.text:
+                                yield chunk.text
+                    return stream_text()
+                
+                # Handle function calling/tools response
+                if tools and hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
+                    return response.candidates[0].content.parts[0].function_call.args
+                
+                # Handle regular text response
+                return response.text
+                
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(backoff ** attempt)
+                continue
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
         try:
-            result = self.model.count_tokens(text)
-            return result.total_tokens
+            response = self.client.models.count_tokens(
+                model=self.model_name,
+                contents=text
+            )
+            return response.total_tokens
         except Exception as e:
             # Fallback to rough estimation if API fails
             return len(text.split()) * 2  # Rough approximation
 
-    # Rest of your class methods remain the same, just now using the updated prompt_model implementation
     # (get_meta, get_chapters, get_paragraphs, prompt, render_context)
         
     def get_meta(
