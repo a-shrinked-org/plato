@@ -63,58 +63,64 @@ class Model:
             })
 
         for m in messages:
-            # Handle both text and structured content
-            if hasattr(m, 'cache') and m.cache:
-                content = {"text": m.content, "cache_control": "ephemeral"}
+            # Handle both dict and User/Assistant objects
+            if isinstance(m, dict):
+                role = m.get("role", "user")
+                content = m.get("content", "")
             else:
-                content = m.content
-
+                # Handle User/Assistant objects
+                role = "user" if isinstance(m, User) else "model"
+                content = m.content if not hasattr(m, 'cache') else {
+                    "text": m.content, 
+                    "cache_control": "ephemeral"
+                }
+        
             contents.append({
-                "role": "user" if isinstance(m, User) else "model",
-                "parts": [{"text": content}]
+                "role": role,
+                "parts": [{"text": str(content)}]
             })
-
+        
         max_retries = 3
         backoff = 2
 
         for attempt in range(max_retries):
-            try:
-                # Create chat session if needed for multiple messages
-                if len(contents) > 1 or stream:
-                    chat = self.model.start_chat(history=contents[:-1])
-                    response = chat.send_message(
-                        contents[-1]["parts"][0]["text"],
-                        generation_config=generation_config,
-                        tools=tools,
-                        stream=stream
-                    )
-                else:
-                    response = self.model.generate_content(
-                        contents[0]["parts"][0]["text"],
-                        generation_config=generation_config,
-                        tools=tools,
-                        stream=stream
-                    )
-
-                if stream:
-                    def stream_text():
-                        for chunk in response:
-                            if hasattr(chunk, 'text'):
-                                yield chunk.text
-                    return stream_text()
-
-                # Handle function calling/tools response
-                if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
-                    return response.candidates[0].content.parts[0].function_call.args
-
-                # Handle regular text response
-                return response.text
-
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(backoff ** attempt)
-                continue
+        try:
+            # Create chat session if needed for multiple messages
+            if len(contents) > 1 or stream:
+                chat = self.model.start_chat(history=contents[:-1])
+                response = chat.send_message(
+                    contents[-1]["parts"][0]["text"],
+                    generation_config=generation_config,
+                    tools=tools,
+                    stream=stream
+                )
+            else:
+                response = self.model.generate_content(
+                    contents[0]["parts"][0]["text"],
+                    generation_config=generation_config,
+                    tools=tools,
+                    stream=stream
+                )
+        
+            if stream:
+                def stream_text():
+                    for chunk in response:
+                        if hasattr(chunk, 'text'):
+                            yield chunk.text
+                return stream_text()
+        
+            # Handle function calling/tools response
+            if tools and hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts[0].function_call:
+                return response.candidates[0].content.parts[0].function_call.args
+        
+            # Handle regular text response
+            return response.text
+        
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(backoff ** attempt)
+            continue
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
