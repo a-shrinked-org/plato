@@ -73,12 +73,24 @@ class Model:
                 ))
             
             for m in messages:
-                role = "user" if isinstance(m, User) else "model"
-                content = m.content if not hasattr(m, 'cache') else {
-                    "text": m.content
-                }
+                # Handle different message formats
+                if isinstance(m, (User, Assistant)):
+                    role = "user" if isinstance(m, User) else "model"
+                    content = m.content
+                elif isinstance(m, dict):
+                    role = "user" if m.get("role", "") == "user" else "model"
+                    content = m.get("content", "")
+                else:
+                    raise ValueError(f"Unsupported message type: {type(m)}")
+
+                # Convert content to string format
+                if isinstance(content, dict):
+                    content = str(content)
+                elif not isinstance(content, str):
+                    content = str(content)
+
                 contents.append(types.Content(
-                    parts=[{"text": str(content)}],
+                    parts=[{"text": content}],
                     role=role
                 ))
 
