@@ -30,7 +30,9 @@ class Model:
         
         # Add rate limiting parameters
         self.last_request_time = 0
-        self.min_request_interval = 0.5  # 500ms between requests
+        self.min_request_interval = 1.0  # Increased to 1 second between requests
+        self.max_retries = 3
+        self.base_wait_time = 2  # Base wait time for exponential backoff
         
         # Normalize model name and handle different formats
         if "flash" in model.lower():
@@ -62,101 +64,55 @@ class Model:
             time.sleep(self.min_request_interval - time_since_last_request)
         
         try:
-            # Set up config
-            config = types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens
-            )
-            
-            # Convert tools to proper format if they exist
-            if tools:
-                tool_config = []
-                for tool in tools:
-                    function_decl = types.FunctionDeclaration(
-                        name=tool["name"],
-                        description=tool.get("description", ""),
-                        parameters=types.Schema(**tool["parameters"])
-                    )
-                    tool_config.append(types.Tool(function_declarations=[function_decl]))
-                config.tools = tool_config
-        
             # Convert messages to Gemini format
             contents = []
             if system:
                 contents.append(types.Content(
-                    parts=[{"text": f"System: {system}"}],
-                    role="user"
+                    parts=[{"text": system}],
+                    role="user"  # Gemini only accepts 'user' or 'model'
                 ))
             
             for m in messages:
-                if isinstance(m, dict):
-                    role = m.get("role", "user")
-                    content = m.get("content", "")
-                else:
-                    role = "user" if isinstance(m, User) else "model"
-                    content = m.content if not hasattr(m, 'cache') else {
-                        "text": m.content,
-                        "cache_control": "ephemeral"
-                    }
-                
+                role = "user" if isinstance(m, User) else "model"
+                content = m.content if not hasattr(m, 'cache') else {
+                    "text": m.content
+                }
                 contents.append(types.Content(
                     parts=[{"text": str(content)}],
                     role=role
                 ))
-        
-            if not stream:
-                max_retries = 3
-                backoff = 2
-                
-                for attempt in range(max_retries):
-                    try:
-                        response = self.client.models.generate_content(
-                            model=self.model_name,
-                            contents=contents,
-                            config=config
-                        )
-                        
-                        # Handle function calling/tools response
-                        if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                            return response.candidates[0].content.parts[0].function_call.args
-                        
-                        # Update last request time after successful request
-                        self.last_request_time = time.time()
-                        return response.text
-                        
-                    except Exception as e:
-                        if attempt == max_retries - 1:
-                            raise
-                        time.sleep(backoff ** attempt)
-                        continue
-            
-            def stream_text():
+
+            for attempt in range(self.max_retries):
                 try:
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=contents,
-                        config=config,
-                        stream=True
+                        generation_config=types.GenerateContentConfig(
+                            temperature=temperature,
+                            max_output_tokens=max_tokens
+                        )
                     )
                     
-                    for chunk in response:
-                        if chunk.text:
-                            yield chunk.text
-                            
+                    self.last_request_time = time.time()
+                    
+                    # Handle function calling/tools response
+                    if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
+                        return response.candidates[0].content.parts[0].function_call.args
+                    
+                    return response.text
+                    
                 except Exception as e:
-                    raise e
-        
-            return stream_text()
+                    if "RESOURCE_EXHAUSTED" in str(e):
+                        if attempt < self.max_retries - 1:
+                            wait_time = self.base_wait_time ** attempt
+                            time.sleep(wait_time)
+                            continue
+                    raise
+            
+            raise Exception("Max retries exceeded")
             
         except Exception as e:
-            if "RESOURCE_EXHAUSTED" in str(e):
-                # If we hit rate limit, wait longer and retry once
-                time.sleep(2)  # Wait 2 seconds before retry
-                # Retry the request
-                # ... same code as above ...
-                self.last_request_time = time.time()
-                return self.prompt_model(messages, max_tokens, temperature, stream, system, tools)
-            raise  # Re-raise other exceptions
+            raise e  # Re-raise the exception after max retries
         
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
