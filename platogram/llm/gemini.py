@@ -30,9 +30,9 @@ class Model:
 
         # Normalize model name and handle different formats
         if "flash" in model.lower():
-            self.model_name = "gemini-2.0-flash-001"
+            self.model_name = "models/gemini-2.0-flash"
         else:
-            self.model_name = "gemini-2.0-pro-001"
+            self.model_name = "models/gemini-2.0-pro-exp"
         
         # Default generation config
         self.generation_config = types.GenerateContentConfig(
