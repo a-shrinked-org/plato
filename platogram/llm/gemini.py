@@ -36,6 +36,9 @@ class Model:
                 scopes=['https://www.googleapis.com/auth/cloud-platform']
             )
             
+            print(f"[GEMINI] Initializing with project: {project_id}")
+            print(f"[GEMINI] Using credentials from: {credentials_path}")
+            
             # Initialize Vertex AI client with explicit credentials
             self.client = genai.Client(
                 credentials=credentials,
@@ -44,8 +47,9 @@ class Model:
                 location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
             )
             
-            # Use Gemini 2.0 Flash stable version without 'models/' prefix
+            # Use Gemini 2.0 Flash stable version
             self.model_name = "gemini-2.0-flash-001"
+            print(f"[GEMINI] Using model: {self.model_name}")
             
             # Rate limiting parameters
             self.last_request_time = 0
@@ -54,6 +58,7 @@ class Model:
             self.base_wait_time = 2
             
         except Exception as e:
+            print(f"[GEMINI] Initialization error: {str(e)}")
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
 
     def prompt_model(
@@ -66,6 +71,9 @@ class Model:
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
         try:
+            print(f"[GEMINI] Starting request with model: {self.model_name}")
+            print(f"[GEMINI] Temperature: {temperature}, Max tokens: {max_tokens}")
+            
             # Convert messages to Gemini format
             contents = []
             if system:
@@ -91,6 +99,7 @@ class Model:
 
             for attempt in range(self.max_retries):
                 try:
+                    print(f"[GEMINI] Attempt {attempt + 1}/{self.max_retries}")
                     # Configure generation parameters
                     config = types.GenerateContentConfig(
                         temperature=temperature,
@@ -103,7 +112,6 @@ class Model:
                         config.tools = tools
 
                     # Add debug logging
-                    print(f"Debug: Using model name: {self.model_name}")
                     print(f"Debug: Request contents: {contents[:100]}...")  # First 100 chars
                     
                     # Make request to Vertex AI
@@ -113,6 +121,7 @@ class Model:
                         config=config
                     )
                     
+                    print(f"[GEMINI] Request successful")
                     self.last_request_time = time.time()
                     
                     if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
@@ -121,9 +130,10 @@ class Model:
                     return response.text
                     
                 except Exception as e:
-                    print(f"Debug: Error in attempt {attempt + 1}: {str(e)}")
+                    print(f"[GEMINI] Error in attempt {attempt + 1}: {str(e)}")
                     if attempt < self.max_retries - 1:
                         wait_time = self.base_wait_time ** attempt
+                        print(f"[GEMINI] Waiting {wait_time}s before retry")
                         time.sleep(wait_time)
                         continue
                     raise
