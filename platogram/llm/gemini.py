@@ -5,32 +5,60 @@ from typing import Any, Generator, Literal, Sequence
 
 from google import genai
 from google.genai import types
+from google.oauth2 import service_account
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
 
 class Model:
     def __init__(self, model: str, key: str | None = None) -> None:
-        # Initialize Vertex AI client
-        self.client = genai.Client(
-            vertexai=True,
-            project=os.getenv('GOOGLE_CLOUD_PROJECT', 'waffly'),
-            location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1'),
-            http_options={'api_version': 'v1'}
-        )
+        """Initialize Gemini model with Vertex AI.
         
-        # Map model names to Vertex AI model names
-        if "flash" in model.lower():
-            self.model_name = "gemini-2.0-flash-001"
-        else:
-            self.model_name = "gemini-2.0-pro-001"
+        Requires environment variables:
+        - GOOGLE_CLOUD_PROJECT
+        - GOOGLE_APPLICATION_CREDENTIALS (service account key file path)
+        - GOOGLE_CLOUD_REGION (optional, defaults to us-central1)
+        """
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
-        # Add rate limiting parameters
-        self.last_request_time = 0
-        self.min_request_interval = 1.0
-        self.max_retries = 3
-        self.base_wait_time = 2
-    
+        if not project_id:
+            raise ValueError("GOOGLE_CLOUD_PROJECT environment variable must be set")
+        if not credentials_path:
+            raise ValueError("GOOGLE_APPLICATION_CREDENTIALS environment variable must be set")
+        if not os.path.exists(credentials_path):
+            raise ValueError(f"Credentials file not found at: {credentials_path}")
+            
+        try:
+            # Explicitly load service account credentials
+            credentials = service_account.Credentials.from_service_account_file(
+                credentials_path,
+                scopes=['https://www.googleapis.com/auth/cloud-platform']
+            )
+            
+            # Initialize Vertex AI client with explicit credentials
+            self.client = genai.Client(
+                credentials=credentials,
+                vertexai=True,
+                project=project_id,
+                location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
+            )
+            
+            # Map model names to Vertex AI models
+            self.model_name = (
+                "gemini-2.0-flash-001" if "flash" in model.lower()
+                else "gemini-2.0-pro-001"
+            )
+            
+            # Rate limiting parameters
+            self.last_request_time = 0
+            self.min_request_interval = 1.0
+            self.max_retries = 3
+            self.base_wait_time = 2
+            
+        except Exception as e:
+            raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
+
     def prompt_model(
         self,
         messages: Sequence[User | Assistant],
