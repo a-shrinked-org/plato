@@ -27,7 +27,11 @@ class Model:
         
         # Create the Gemini client
         self.client = genai.Client(api_key=key)
-
+        
+        # Add rate limiting parameters
+        self.last_request_time = 0
+        self.min_request_interval = 0.5  # 500ms between requests
+        
         # Normalize model name and handle different formats
         if "flash" in model.lower():
             self.model_name = "models/gemini-2.0-flash"
@@ -51,89 +55,108 @@ class Model:
         system: str | None = None,
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
-        # Set up config
-        config = types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens
-        )
+        # Add rate limiting
+        current_time = time.time()
+        time_since_last_request = current_time - self.last_request_time
+        if time_since_last_request < self.min_request_interval:
+            time.sleep(self.min_request_interval - time_since_last_request)
         
-        # Convert tools to proper format if they exist
-        if tools:
-            tool_config = []
-            for tool in tools:
-                function_decl = types.FunctionDeclaration(
-                    name=tool["name"],
-                    description=tool.get("description", ""),
-                    parameters=types.Schema(**tool["parameters"])
-                )
-                tool_config.append(types.Tool(function_declarations=[function_decl]))
-            config.tools = tool_config
-    
-        # Convert messages to Gemini format
-        contents = []
-        if system:
-            contents.append(types.Content(
-                parts=[{"text": f"System: {system}"}],
-                role="user"
-            ))
+        try:
+            # Set up config
+            config = types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens
+            )
+            
+            # Convert tools to proper format if they exist
+            if tools:
+                tool_config = []
+                for tool in tools:
+                    function_decl = types.FunctionDeclaration(
+                        name=tool["name"],
+                        description=tool.get("description", ""),
+                        parameters=types.Schema(**tool["parameters"])
+                    )
+                    tool_config.append(types.Tool(function_declarations=[function_decl]))
+                config.tools = tool_config
         
-        for m in messages:
-            if isinstance(m, dict):
-                role = m.get("role", "user")
-                content = m.get("content", "")
-            else:
-                role = "user" if isinstance(m, User) else "model"
-                content = m.content if not hasattr(m, 'cache') else {
-                    "text": m.content,
-                    "cache_control": "ephemeral"
-                }
+            # Convert messages to Gemini format
+            contents = []
+            if system:
+                contents.append(types.Content(
+                    parts=[{"text": f"System: {system}"}],
+                    role="user"
+                ))
             
-            contents.append(types.Content(
-                parts=[{"text": str(content)}],
-                role=role
-            ))
-    
-        if not stream:
-            max_retries = 3
-            backoff = 2
+            for m in messages:
+                if isinstance(m, dict):
+                    role = m.get("role", "user")
+                    content = m.get("content", "")
+                else:
+                    role = "user" if isinstance(m, User) else "model"
+                    content = m.content if not hasattr(m, 'cache') else {
+                        "text": m.content,
+                        "cache_control": "ephemeral"
+                    }
+                
+                contents.append(types.Content(
+                    parts=[{"text": str(content)}],
+                    role=role
+                ))
+        
+            if not stream:
+                max_retries = 3
+                backoff = 2
+                
+                for attempt in range(max_retries):
+                    try:
+                        response = self.client.models.generate_content(
+                            model=self.model_name,
+                            contents=contents,
+                            config=config
+                        )
+                        
+                        # Handle function calling/tools response
+                        if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
+                            return response.candidates[0].content.parts[0].function_call.args
+                        
+                        # Update last request time after successful request
+                        self.last_request_time = time.time()
+                        return response.text
+                        
+                    except Exception as e:
+                        if attempt == max_retries - 1:
+                            raise
+                        time.sleep(backoff ** attempt)
+                        continue
             
-            for attempt in range(max_retries):
+            def stream_text():
                 try:
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=contents,
-                        config=config
+                        config=config,
+                        stream=True
                     )
                     
-                    # Handle function calling/tools response
-                    if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                        return response.candidates[0].content.parts[0].function_call.args
-                    
-                    return response.text
-                    
+                    for chunk in response:
+                        if chunk.text:
+                            yield chunk.text
+                            
                 except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    time.sleep(backoff ** attempt)
-                    continue
+                    raise e
         
-        def stream_text():
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=contents,
-                    config=config,
-                    stream=True
-                )
-                
-                for chunk in response:
-                    if chunk.text:
-                        yield chunk.text
-                        
-            except Exception as e:
-                raise e
-    
-        return stream_text()
+            return stream_text()
+            
+        except Exception as e:
+            if "RESOURCE_EXHAUSTED" in str(e):
+                # If we hit rate limit, wait longer and retry once
+                time.sleep(2)  # Wait 2 seconds before retry
+                # Retry the request
+                # ... same code as above ...
+                self.last_request_time = time.time()
+                return self.prompt_model(messages, max_tokens, temperature, stream, system, tools)
+            raise  # Re-raise other exceptions
         
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
