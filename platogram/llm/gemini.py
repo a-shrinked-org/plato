@@ -57,19 +57,13 @@ class Model:
         system: str | None = None,
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
-        # Add rate limiting
-        current_time = time.time()
-        time_since_last_request = current_time - self.last_request_time
-        if time_since_last_request < self.min_request_interval:
-            time.sleep(self.min_request_interval - time_since_last_request)
-        
         try:
             # Convert messages to Gemini format
             contents = []
             if system:
                 contents.append(types.Content(
                     parts=[{"text": system}],
-                    role="user"  # Gemini only accepts 'user' or 'model'
+                    role="user"
                 ))
             
             for m in messages:
@@ -83,26 +77,28 @@ class Model:
                 else:
                     raise ValueError(f"Unsupported message type: {type(m)}")
 
-                # Convert content to string format
-                if isinstance(content, dict):
-                    content = str(content)
-                elif not isinstance(content, str):
-                    content = str(content)
-
                 contents.append(types.Content(
-                    parts=[{"text": content}],
+                    parts=[{"text": str(content)}],
                     role=role
                 ))
 
             for attempt in range(self.max_retries):
                 try:
+                    # Use the correct API structure
+                    config = types.GenerateContentConfig(
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                        top_p=0.95,
+                        top_k=40,
+                    )
+                    
+                    if tools:
+                        config.tools = tools
+
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=contents,
-                        generation_config=types.GenerateContentConfig(
-                            temperature=temperature,
-                            max_output_tokens=max_tokens
-                        )
+                        config=config
                     )
                     
                     self.last_request_time = time.time()
@@ -114,17 +110,16 @@ class Model:
                     return response.text
                     
                 except Exception as e:
-                    if "RESOURCE_EXHAUSTED" in str(e):
-                        if attempt < self.max_retries - 1:
-                            wait_time = self.base_wait_time ** attempt
-                            time.sleep(wait_time)
-                            continue
+                    if "RESOURCE_EXHAUSTED" in str(e) and attempt < self.max_retries - 1:
+                        wait_time = self.base_wait_time ** attempt
+                        time.sleep(wait_time)
+                        continue
                     raise
             
             raise Exception("Max retries exceeded")
             
         except Exception as e:
-            raise e  # Re-raise the exception after max retries
+            raise e
         
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
