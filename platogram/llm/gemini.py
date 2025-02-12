@@ -44,8 +44,8 @@ class Model:
                 location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
             )
             
-            # Map model names to Vertex AI models
-            self.model_name = "models/gemini-2.0-flash"
+            # Use Gemini 2.0 Flash stable version without 'models/' prefix
+            self.model_name = "gemini-2.0-flash-001"
             
             # Rate limiting parameters
             self.last_request_time = 0
@@ -66,7 +66,7 @@ class Model:
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
         try:
-            # Convert messages to Vertex AI format
+            # Convert messages to Gemini format
             contents = []
             if system:
                 contents.append(types.Content(
@@ -91,12 +91,6 @@ class Model:
 
             for attempt in range(self.max_retries):
                 try:
-                    # Rate limiting
-                    current_time = time.time()
-                    time_since_last_request = current_time - self.last_request_time
-                    if time_since_last_request < self.min_request_interval:
-                        time.sleep(self.min_request_interval - time_since_last_request)
-
                     # Configure generation parameters
                     config = types.GenerateContentConfig(
                         temperature=temperature,
@@ -108,6 +102,10 @@ class Model:
                     if tools:
                         config.tools = tools
 
+                    # Add debug logging
+                    print(f"Debug: Using model name: {self.model_name}")
+                    print(f"Debug: Request contents: {contents[:100]}...")  # First 100 chars
+                    
                     # Make request to Vertex AI
                     response = self.client.models.generate_content(
                         model=self.model_name,
@@ -123,6 +121,7 @@ class Model:
                     return response.text
                     
                 except Exception as e:
+                    print(f"Debug: Error in attempt {attempt + 1}: {str(e)}")
                     if attempt < self.max_retries - 1:
                         wait_time = self.base_wait_time ** attempt
                         time.sleep(wait_time)
