@@ -45,10 +45,7 @@ class Model:
             )
             
             # Map model names to Vertex AI models
-            self.model_name = (
-                "gemini-2.0-flash-001" if "flash" in model.lower()
-                else "gemini-2.0-pro-001"
-            )
+            self.model_name = "models/gemini-2.0-flash"
             
             # Rate limiting parameters
             self.last_request_time = 0
