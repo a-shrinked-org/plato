@@ -9,45 +9,28 @@ from google.genai import types
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
 
-import os
-import re
-import time
-from typing import Any, Generator, Literal, Sequence
-
-from google import genai
-from google.genai import types
-
-from platogram.ops import render
-from platogram.types import Assistant, Content, User
-
 class Model:
     def __init__(self, model: str, key: str | None = None) -> None:
-        if key is None:
-            key = os.environ["GOOGLE_API_KEY"]
+        # Initialize Vertex AI client
+        self.client = genai.Client(
+            vertexai=True,
+            project=os.getenv('GOOGLE_CLOUD_PROJECT', 'waffly'),
+            location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1'),
+            http_options={'api_version': 'v1'}
+        )
         
-        # Create the Gemini client
-        self.client = genai.Client(api_key=key)
+        # Map model names to Vertex AI model names
+        if "flash" in model.lower():
+            self.model_name = "gemini-2.0-flash-001"
+        else:
+            self.model_name = "gemini-2.0-pro-001"
         
         # Add rate limiting parameters
         self.last_request_time = 0
-        self.min_request_interval = 1.0  # Increased to 1 second between requests
+        self.min_request_interval = 1.0
         self.max_retries = 3
-        self.base_wait_time = 2  # Base wait time for exponential backoff
-        
-        # Normalize model name and handle different formats
-        if "flash" in model.lower():
-            self.model_name = "models/gemini-2.0-flash"
-        else:
-            self.model_name = "models/gemini-2.0-pro-exp"
-        
-        # Default generation config
-        self.generation_config = types.GenerateContentConfig(
-            temperature=0.1,
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=4096,
-        )
-
+        self.base_wait_time = 2
+    
     def prompt_model(
         self,
         messages: Sequence[User | Assistant],
@@ -58,7 +41,7 @@ class Model:
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
         try:
-            # Convert messages to Gemini format
+            # Convert messages to Vertex AI format
             contents = []
             if system:
                 contents.append(types.Content(
@@ -67,7 +50,6 @@ class Model:
                 ))
             
             for m in messages:
-                # Handle different message formats
                 if isinstance(m, (User, Assistant)):
                     role = "user" if isinstance(m, User) else "model"
                     content = m.content
@@ -84,7 +66,13 @@ class Model:
 
             for attempt in range(self.max_retries):
                 try:
-                    # Use the correct API structure
+                    # Rate limiting
+                    current_time = time.time()
+                    time_since_last_request = current_time - self.last_request_time
+                    if time_since_last_request < self.min_request_interval:
+                        time.sleep(self.min_request_interval - time_since_last_request)
+
+                    # Configure generation parameters
                     config = types.GenerateContentConfig(
                         temperature=temperature,
                         max_output_tokens=max_tokens,
@@ -95,6 +83,7 @@ class Model:
                     if tools:
                         config.tools = tools
 
+                    # Make request to Vertex AI
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=contents,
@@ -103,14 +92,13 @@ class Model:
                     
                     self.last_request_time = time.time()
                     
-                    # Handle function calling/tools response
                     if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
                         return response.candidates[0].content.parts[0].function_call.args
                     
                     return response.text
                     
                 except Exception as e:
-                    if "RESOURCE_EXHAUSTED" in str(e) and attempt < self.max_retries - 1:
+                    if attempt < self.max_retries - 1:
                         wait_time = self.base_wait_time ** attempt
                         time.sleep(wait_time)
                         continue
@@ -120,7 +108,7 @@ class Model:
             
         except Exception as e:
             raise e
-        
+
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
         try:
