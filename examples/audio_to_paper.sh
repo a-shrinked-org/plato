@@ -40,7 +40,7 @@ get_with_retry() {
             continue
         fi
         
-        output=$(eval "$cmd" 2>/dev/null || true)
+        output=$(eval "$cmd" || true) 
         
         # Content-specific validation
         case "$content_type" in

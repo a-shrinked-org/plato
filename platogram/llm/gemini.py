@@ -2,6 +2,7 @@ import os
 import re
 import time
 import logging
+import vertexai
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
@@ -42,12 +43,14 @@ class Model:
             logger.info(f"Using credentials from: {credentials_path}")
             
             # Initialize Vertex AI client with explicit credentials
-            self.client = genai.Client(
-                credentials=credentials,
-                vertexai=True,
+            vertexai.init(
                 project=project_id,
-                location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
+                location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1'),
+                credentials=credentials
             )
+            self.client = genai.Client()
+            
+            logger.info(f"Authenticated as project: {credentials.project_id}")
             
             # Use Gemini 2.0 Flash stable version
             self.model_name = "gemini-2.0-flash-001"

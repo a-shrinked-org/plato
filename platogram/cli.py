@@ -65,7 +65,7 @@ def process_url(
     if not lang:
         lang = "en"
     
-    model_name = f"{model_type}/gemini-2.0" if model_type == "gemini" else "anthropic/claude-3-5-sonnet"
+    model_name = f"{model_type}/gemini-2.0-flash-001" if model_type == "gemini" else "anthropic/claude-3-5-sonnet"
     llm = plato.llm.get_model(model_name, anthropic_api_key)
     
     # Enhanced debug logging
