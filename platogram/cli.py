@@ -122,16 +122,28 @@ def prompt_context(
     context_size: Literal["small", "medium", "large"],
     anthropic_api_key: str | None,
 ) -> str:
-    return response
-    model_name = "gemini/gemini-2.0"
-    print(f"Debug: Using {model_name} for prompt_context", file=sys.stderr)
-    llm = plato.llm.get_model(model_name)
-    response = llm.prompt(
-        prompt=prompt,
-        context=context,
-        context_size=context_size,
-    )
-    return response
+    try:
+        model_name = "gemini/gemini-2.0"
+        print(f"Debug: Using {model_name} for prompt_context", file=sys.stderr)
+        llm = plato.llm.get_model(model_name, gemini_api_key)
+        response = llm.prompt(
+            prompt=prompt,
+            context=context,
+            context_size=context_size
+        )
+        if not response:
+            print("Debug: Empty response from model", file=sys.stderr)
+            return "Content generation failed. Please try again."
+        return response
+        
+        # Handle both string and structured responses
+        if isinstance(response, dict):
+            return str(response.get("text", "Content generation failed."))
+        return response
+        
+    except Exception as e:
+        print(f"Debug: Error in prompt_context: {str(e)}", file=sys.stderr)
+        return "Content generation failed. Please try again."
 
 
 def is_uri(s):
@@ -214,7 +226,7 @@ def main():
                 args.assemblyai_api_key,
                 extract_images=args.images,
                 lang=lang,
-                gemini_api_key=args.gemini_api_key,  # Add this one line
+                gemini_api_key=args.gemini_api_key,
             )
             for url_or_file in args.inputs
         ]
