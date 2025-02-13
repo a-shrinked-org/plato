@@ -152,20 +152,8 @@ case "$MODEL" in
     ;;
 *)
     echo "Error: Invalid model: $MODEL"
-    echo "Available models: anthropic, gemini"
+    echo "Available models: gemini"
     exit 1
-    ;;
-esac
-
-# Add debug output for credentials
-echo "Debug: Using model: $MODEL" >&2
-case "$MODEL" in
-"anthropic")
-    echo "Debug: ANTHROPIC_API_KEY present: ${ANTHROPIC_API_KEY:+yes}" >&2
-    ;;
-"gemini")
-    echo "Debug: GOOGLE_CLOUD_PROJECT: $GOOGLE_CLOUD_PROJECT" >&2
-    echo "Debug: Using credentials from: $GOOGLE_APPLICATION_CREDENTIALS" >&2
     ;;
 esac
 
@@ -220,8 +208,14 @@ if ! plato --status "$URL" | grep -q "complete"; then
     sleep 5
 fi
 
+echo "Debug: Model configuration:" >&2
+echo "Debug: Using model: $MODEL" >&2
+echo "Debug: GOOGLE_CLOUD_PROJECT: $GOOGLE_CLOUD_PROJECT" >&2
+echo "Debug: Using credentials from: $GOOGLE_APPLICATION_CREDENTIALS" >&2
+
 # Get content with retries and sanitization
 echo "Retrieving title..."
+echo "Debug: Starting content generation with Gemini model" >&2
 TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Title" "title")
 echo "Retrieving abstract..."
 ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Summary" "abstract")

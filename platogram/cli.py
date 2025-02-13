@@ -65,11 +65,13 @@ def process_url(
         lang = "en"
     
     # Use Vertex AI with Gemini model
-    model_name = "gemini/gemini-2.0-flash-001"
+    model_name = "gemini/gemini-2.0"
     llm = plato.llm.get_model(model_name)
     
     # Debug logging
     print(f"Debug: Using model: {model_name}", file=sys.stderr)
+    print(f"Debug: Project ID: {os.getenv('GOOGLE_CLOUD_PROJECT')}", file=sys.stderr)
+    print(f"Debug: Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}", file=sys.stderr)
     
     # Initialize ASR model only once
     asr = (
@@ -84,9 +86,12 @@ def process_url(
         return library.get_content(id)
 
     with tqdm(total=4, desc=f"Processing {url}", file=sys.stderr) as pbar:
+        print("Debug: Starting transcript extraction", file=sys.stderr)
         transcript = plato.extract_transcript(url, asr, lang=lang)
         pbar.update(1)
+        
         pbar.set_description("Indexing content")
+        print("Debug: Starting content indexing", file=sys.stderr)
         content = plato.index(transcript, llm, lang=lang)
         pbar.update(1)
         if extract_images:
@@ -98,6 +103,8 @@ def process_url(
             content.images = [str(image.relative_to(library.home)) for image in images]
             pbar.update(1)
         pbar.set_description("Saving content")
+        
+        print("Debug: Saving content", file=sys.stderr)
         library.put(id, content)
         pbar.update(1)
 
