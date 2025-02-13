@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import logging
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
@@ -36,8 +37,9 @@ class Model:
                 scopes=['https://www.googleapis.com/auth/cloud-platform']
             )
             
-            print(f"[GEMINI] Initializing with project: {project_id}")
-            print(f"[GEMINI] Using credentials from: {credentials_path}")
+            logger = logging.getLogger('gemini')
+            logger.info(f"Initializing with project: {project_id}")
+            logger.info(f"Using credentials from: {credentials_path}")
             
             # Initialize Vertex AI client with explicit credentials
             self.client = genai.Client(
@@ -49,7 +51,7 @@ class Model:
             
             # Use Gemini 2.0 Flash stable version
             self.model_name = "gemini-2.0-flash-001"
-            print(f"[GEMINI] Using model: {self.model_name}")
+            logger.info(f"Using model: {self.model_name}")
             
             # Rate limiting parameters
             self.last_request_time = 0
@@ -58,7 +60,7 @@ class Model:
             self.base_wait_time = 2
             
         except Exception as e:
-            print(f"[GEMINI] Initialization error: {str(e)}")
+            logger.error(f"Initialization error: {str(e)}")
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
 
     def prompt_model(
@@ -70,9 +72,10 @@ class Model:
         system: str | None = None,
         tools: list[dict] | None = None,
     ) -> str | dict[str, str] | Generator[str, None, None]:
+        logger = logging.getLogger('gemini')
         try:
-            print(f"[GEMINI] Starting request with model: {self.model_name}")
-            print(f"[GEMINI] Temperature: {temperature}, Max tokens: {max_tokens}")
+            logger.info(f"Starting request with model: {self.model_name}")
+            logger.info(f"Temperature: {temperature}, Max tokens: {max_tokens}")
             
             # Convert messages to Gemini format
             contents = []
@@ -99,7 +102,7 @@ class Model:
 
             for attempt in range(self.max_retries):
                 try:
-                    print(f"[GEMINI] Attempt {attempt + 1}/{self.max_retries}")
+                    logger.info(f"Attempt {attempt + 1}/{self.max_retries}")
                     # Configure generation parameters
                     config = types.GenerateContentConfig(
                         temperature=temperature,
@@ -112,7 +115,7 @@ class Model:
                         config.tools = tools
 
                     # Add debug logging
-                    print(f"Debug: Request contents: {contents[:100]}...")  # First 100 chars
+                    logger.info(f"Debug: Request contents: {contents[:100]}...")  # First 100 chars
                     
                     # Make request to Vertex AI
                     response = self.client.models.generate_content(
@@ -121,19 +124,19 @@ class Model:
                         config=config
                     )
                     
-                    print(f"[GEMINI] Request successful")
+                    logger.info("Request successful")
                     self.last_request_time = time.time()
                     
                     if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
                         return response.candidates[0].content.parts[0].function_call.args
                     
-                    return response.text
+                    return response.text.strip()
                     
                 except Exception as e:
-                    print(f"[GEMINI] Error in attempt {attempt + 1}: {str(e)}")
+                    logger.error(f"Error in attempt {attempt + 1}: {str(e)}")
                     if attempt < self.max_retries - 1:
                         wait_time = self.base_wait_time ** attempt
-                        print(f"[GEMINI] Waiting {wait_time}s before retry")
+                        logger.info(f"Waiting {wait_time}s before retry")
                         time.sleep(wait_time)
                         continue
                     raise
@@ -507,3 +510,142 @@ class Model:
         
         assert isinstance(response, str)
         return response
+
+    def get_contributors(
+        self,
+        text: str,
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> list[tuple[str, str, str]]:
+        """Extract contributors from content."""
+        logger = logging.getLogger('gemini')
+        if not lang:
+            lang = "en"
+
+        system_prompt = {
+            "en": """You are a skilled editor extracting contributor information.
+
+Instructions:
+1. Analyze the text carefully
+2. Identify all mentioned individuals
+3. Extract their names, roles, and organizations
+4. Only include explicitly stated information
+5. Use "Unknown" for missing information
+
+Format Requirements:
+- Name: Full name if available
+- Role: Professional title or role
+- Organization: Company or institution
+- Only include information present in text
+- Do not make assumptions""",
+            "es": """Eres un editor experto extrayendo información de contribuyentes.
+
+Instructions:
+1. Analiza el texto cuidadosamente
+2. Identifica todas las personas mencionadas
+3. Extrae sus nombres, roles y organizaciones
+4. Solo incluye información explícitamente mencionada
+5. Usa "Desconocido" para información faltante
+
+Requisitos de Formato:
+- Nombre: Nombre completo si está disponible
+- Rol: Título profesional o rol
+- Organización: Compañía o institución
+- Solo incluir información presente en el texto
+- No hacer suposiciones"""
+        }
+
+        tool_definition = {
+            "name": "extract_contributors",
+            "description": "Extracts contributor information from text",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contributors": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "role": {"type": "string"},
+                                "organization": {"type": "string"}
+                            },
+                            "required": ["name", "role", "organization"]
+                        }
+                    }
+                },
+                "required": ["contributors"]
+            }
+        }
+
+        response = self.prompt_model(
+            system=system_prompt[lang],
+            messages=[User(content=f"<text>{text}</text>")],
+            tools=[tool_definition],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        if isinstance(response, dict) and "contributors" in response:
+            return [(c["name"], c["role"], c["organization"]) 
+                    for c in response["contributors"]]
+        
+        raise ValueError(f"Expected dict with contributors, got {response}")
+
+    def get_conclusion(
+        self,
+        text: str,
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> str:
+        """Generate conclusion from content."""
+        logger = logging.getLogger('gemini')
+        if not lang:
+            lang = "en"
+
+        system_prompt = {
+            "en": """You are a skilled academic editor creating conclusions.
+
+Instructions:
+1. Analyze the full text carefully
+2. Identify key findings and implications
+3. Summarize main points and their significance
+4. Maintain academic style
+5. Include relevant numerical markers
+
+Format Requirements:
+- 4-5 paragraphs
+- Include marker references [number]
+- Maintain formal tone
+- Focus on key insights
+- End with future implications""",
+            "es": """Eres un editor académico experto creando conclusiones.
+
+Instructions:
+1. Analiza el texto completo cuidadosamente
+2. Identifica hallazgos e implicaciones clave
+3. Resume puntos principales y su significado
+4. Mantén estilo académico
+5. Incluye marcadores numéricos relevantes
+
+Requisitos de Formato:
+- 4-5 párrafos
+- Incluir referencias de marcadores [número]
+- Mantener tono formal
+- Enfocarse en insights clave
+- Terminar con implicaciones futuras"""
+        }
+
+        response = self.prompt_model(
+            system=system_prompt[lang],
+            messages=[User(content=f"<text>{text}</text>")],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        if isinstance(response, str):
+            return response.strip()
+        
+        raise ValueError(f"Expected string response, got {type(response)}")
