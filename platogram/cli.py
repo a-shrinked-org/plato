@@ -272,7 +272,7 @@ def main():
 
         result += f"""\n\n{
             prompt_context(
-                context, prompt, args.context_size, model_type=args.model, args.anthropic_api_key,
+                context, prompt, args.context_size, args.anthropic_api_key, model_type=args.model,
             )}\n\n"""
 
     for content in context:
