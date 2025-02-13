@@ -119,8 +119,8 @@ def prompt_context(
     context: list[Content],
     prompt: Sequence[Assistant | User],
     context_size: Literal["small", "medium", "large"],
-    model_type: str = "gemini",
     anthropic_api_key: str | None,
+    model_type: str = "gemini",
 ) -> str:
     try:
         # Select model based on type
