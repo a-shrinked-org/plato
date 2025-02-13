@@ -69,10 +69,14 @@ def process_url(
     model_name = "gemini/gemini-2.0"
     llm = plato.llm.get_model(model_name)
     
-    # Debug logging
-    print(f"Debug: Using model: {model_name}", file=sys.stderr)
-    print(f"Debug: Project ID: {os.getenv('GOOGLE_CLOUD_PROJECT')}", file=sys.stderr)
-    print(f"Debug: Credentials path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}", file=sys.stderr)
+    # Enhanced debug logging
+    print("=== Debug: Process URL Configuration ===", file=sys.stderr)
+    print(f"URL: {url}", file=sys.stderr)
+    print(f"Model: {model_name}", file=sys.stderr)
+    print(f"Project ID: {os.getenv('GOOGLE_CLOUD_PROJECT')}", file=sys.stderr)
+    print(f"Credentials: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}", file=sys.stderr)
+    print(f"Language: {lang}", file=sys.stderr)
+    print("===================================", file=sys.stderr)
     
     # Initialize ASR model only once
     asr = (
@@ -96,6 +100,7 @@ def process_url(
         content = plato.index(transcript, llm, lang=lang)
         pbar.update(1)
         if extract_images:
+            print("Debug: Extracting images", file=sys.stderr)
             pbar.set_description("Extracting images")
             images_dir = library.home / id
             images_dir.mkdir(exist_ok=True)
@@ -103,8 +108,8 @@ def process_url(
             images = ingest.extract_images(url, images_dir, timestamps_ms)
             content.images = [str(image.relative_to(library.home)) for image in images]
             pbar.update(1)
+            
         pbar.set_description("Saving content")
-        
         print("Debug: Saving content", file=sys.stderr)
         library.put(id, content)
         pbar.update(1)
@@ -117,7 +122,10 @@ def prompt_context(
     context_size: Literal["small", "medium", "large"],
     anthropic_api_key: str | None,
 ) -> str:
-    llm = plato.llm.get_model("anthropic/claude-3-5-sonnet", anthropic_api_key)
+    return response
+    model_name = "gemini/gemini-2.0"
+    print(f"Debug: Using {model_name} for prompt_context", file=sys.stderr)
+    llm = plato.llm.get_model(model_name)
     response = llm.prompt(
         prompt=prompt,
         context=context,

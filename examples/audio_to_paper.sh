@@ -6,6 +6,13 @@ set -e
 MAX_RETRIES=2
 RETRY_DELAY=2
 
+DEBUG_LOG() {
+    echo "[DEBUG] $*" >&2
+}
+
+DEBUG_LOG "Script starting with debug logging enabled"
+DEBUG_LOG "Testing stderr output"
+
 # Function to handle errors
 handle_error() {
     local exit_code=$?
@@ -90,6 +97,8 @@ VERBOSE="false"
 IMAGES="false"
 MODEL="gemini"
 
+DEBUG_LOG "Model set to: $MODEL"
+
 while [[ $# -gt 0 ]]; do
     case $1 in
     --lang)
@@ -157,6 +166,16 @@ case "$MODEL" in
     ;;
 esac
 
+{
+    DEBUG_LOG "========= Configuration ========="
+    DEBUG_LOG "Model type: $MODEL"
+    DEBUG_LOG "Project ID: $GOOGLE_CLOUD_PROJECT"
+    DEBUG_LOG "Credentials: $GOOGLE_APPLICATION_CREDENTIALS"
+    DEBUG_LOG "Language: $LANG"
+    DEBUG_LOG "Images enabled: $IMAGES"
+    DEBUG_LOG "=============================="
+} 
+
 # Load language-specific prompts
 case "$LANG" in
 "en")
@@ -215,10 +234,15 @@ echo "Debug: Using credentials from: $GOOGLE_APPLICATION_CREDENTIALS" >&2
 
 # Get content with retries and sanitization
 echo "Retrieving title..."
-echo "Debug: Starting content generation with Gemini model" >&2
+DEBUG_LOG "Executing title command with Gemini"
 TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Title" "title")
+DEBUG_LOG "Retrieved title: $TITLE"
+
 echo "Retrieving abstract..."
+DEBUG_LOG "Executing abstract command with Gemini"
 ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Summary" "abstract")
+DEBUG_LOG "Retrieved abstract: $ABSTRACT"
+
 echo "Retrieving passages..."
 PASSAGES=$(get_with_retry "plato --passages --chapters --inline-references '$URL' --lang '$LANG' $MODEL_FLAG" "No content available" "passages")
 echo "Retrieving references..."
