@@ -64,17 +64,12 @@ def process_url(
     if not lang:
         lang = "en"
     
-    # For testing: Use hardcoded Gemini key if gemini_api_key is None
-    test_gemini_key = "AIzaSyCCvPlm9mjhUv2kzuJwV36eiZJ2x6B7ovM"
-    gemini_api_key = gemini_api_key or test_gemini_key
+    # Use Vertex AI with Gemini model
+    model_name = "gemini/gemini-2.0-flash-001"
+    llm = plato.llm.get_model(model_name)
     
-    # Debug logging for API keys
-    print(f"Debug: Using Gemini key for testing", file=sys.stderr)
-    
-    model_name = "gemini/gemini-2.0"  # Use Pro version
-    api_key = gemini_api_key
-    
-    llm = plato.llm.get_model(model_name, api_key)
+    # Debug logging
+    print(f"Debug: Using model: {model_name}", file=sys.stderr)
     
     # Initialize ASR model only once
     asr = (

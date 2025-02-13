@@ -132,13 +132,23 @@ case "$MODEL" in
     MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
     ;;
 "gemini")
-    if [ -z "$GOOGLE_API_KEY" ]; then
-        echo "Error: GOOGLE_API_KEY is not set"
-        echo "Obtain it from https://makersuite.google.com/app/apikey"
-        echo "Run: export GOOGLE_API_KEY=<your-api-key>"
+    # Check for Vertex AI credentials
+    if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
+        echo "Error: GOOGLE_CLOUD_PROJECT is not set"
+        echo "Run: export GOOGLE_CLOUD_PROJECT=<your-project-id>"
         exit 1
     fi
-    MODEL_FLAG="--gemini-api-key $GOOGLE_API_KEY"
+    if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+        echo "Error: GOOGLE_APPLICATION_CREDENTIALS is not set"
+        echo "Run: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json"
+        exit 1
+    fi
+    if [ ! -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+        echo "Error: Credentials file not found at: $GOOGLE_APPLICATION_CREDENTIALS"
+        exit 1
+    fi
+    # No need to set MODEL_FLAG as credentials are handled via environment
+    MODEL_FLAG=""
     ;;
 *)
     echo "Error: Invalid model: $MODEL"
@@ -147,14 +157,15 @@ case "$MODEL" in
     ;;
 esac
 
-# Add debug output for key presence
+# Add debug output for credentials
 echo "Debug: Using model: $MODEL" >&2
 case "$MODEL" in
 "anthropic")
     echo "Debug: ANTHROPIC_API_KEY present: ${ANTHROPIC_API_KEY:+yes}" >&2
     ;;
 "gemini")
-    echo "Debug: GOOGLE_API_KEY present: ${GOOGLE_API_KEY:+yes}" >&2
+    echo "Debug: GOOGLE_CLOUD_PROJECT: $GOOGLE_CLOUD_PROJECT" >&2
+    echo "Debug: Using credentials from: $GOOGLE_APPLICATION_CREDENTIALS" >&2
     ;;
 esac
 
