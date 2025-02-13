@@ -435,6 +435,42 @@ class Model:
         assert isinstance(response, str)
         return re.findall(r"<p>(.*?)</p>", response, re.DOTALL)
     
+    def render_context(
+        self, context: list[Content], context_size: Literal["small", "medium", "large"]
+    ) -> str:
+        base = 0
+        output = ""
+    
+        for content in context:
+            paragraphs = [
+                re.sub(r"【(\d+)】", lambda m: f"【{int(m.group(1))+base}】", paragraph)
+                for paragraph in content.passages
+            ]
+            paragraphs = [
+                re.sub(
+                    r"【(\d+)】(\w*【\d+】\w*)+",
+                    lambda m: f"【{int(m.group(1))}】",
+                    paragraph,
+                )
+                for paragraph in paragraphs
+            ]
+            output += f'<content title="{content.title}" summary="{content.summary}">\n'
+            if context_size == "small" or context_size == "large":
+                output += "<paragraphs>\n"
+                output += "\n".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
+                output += "\n</paragraphs>\n"
+    
+            if context_size == "medium" or context_size == "large":
+                text = render(
+                    {i + base: event.text for i, event in enumerate(content.transcript)}
+                )
+                output += f"<text>{text}</text>\n"
+    
+            output += "</content>\n"
+            base += len(content.transcript)
+    
+        return output.strip()
+    
     def prompt(
         self,
         prompt: Sequence[User | Assistant] | str,

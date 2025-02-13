@@ -131,38 +131,23 @@ fi
 
 # Validate API keys and set model flags based on MODEL type
 case "$MODEL" in
-"anthropic")
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-        echo "Error: ANTHROPIC_API_KEY is not set"
-        echo "Obtain it from https://console.anthropic.com/keys"
-        echo "Run: export ANTHROPIC_API_KEY=<your-api-key>"
-        exit 1
-    fi
-    MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
-    ;;
 "gemini")
-    # Check for Vertex AI credentials
     if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
-        echo "Error: GOOGLE_CLOUD_PROJECT is not set"
-        echo "Run: export GOOGLE_CLOUD_PROJECT=<your-project-id>"
+        echo "Error: GOOGLE_CLOUD_PROJECT environment variable not set"
         exit 1
     fi
     if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-        echo "Error: GOOGLE_APPLICATION_CREDENTIALS is not set"
-        echo "Run: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json"
+        echo "Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set"
         exit 1
     fi
-    if [ ! -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-        echo "Error: Credentials file not found at: $GOOGLE_APPLICATION_CREDENTIALS"
-        exit 1
-    fi
-    # No need to set MODEL_FLAG as credentials are handled via environment
-    MODEL_FLAG=""
+    MODEL_FLAG="--model gemini"
     ;;
-*)
-    echo "Error: Invalid model: $MODEL"
-    echo "Available models: gemini"
-    exit 1
+"anthropic")
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        echo "Error: ANTHROPIC_API_KEY not set"
+        exit 1
+    fi
+    MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
     ;;
 esac
 

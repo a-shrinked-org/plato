@@ -49,11 +49,28 @@ class LanguageModel(Protocol):
 
 
 def get_model(full_model_name: str, key: str | None = None) -> LanguageModel:
-    if full_model_name.startswith("anthropic/"):
+    """Get language model instance based on model name.
+    
+    Args:
+        full_model_name: Model identifier (e.g., "anthropic/claude-3" or "gemini/gemini-2.0")
+        key: API key (only used for Anthropic models)
+    
+    Returns:
+        LanguageModel implementation
+    
+    Raises:
+        ValueError: If model type is not supported
+    """
+    model_type, model_name = full_model_name.split("/", 1)
+    
+    if model_type == "anthropic":
+        if not key:
+            raise ValueError("API key required for Anthropic models")
         from platogram.llm.anthropic import Model
-        return Model(full_model_name.split("/")[-1], key)
-    elif full_model_name.startswith("gemini/"):
+        return Model(model_name, key)
+    elif model_type == "gemini":
+        # Gemini doesn't use API key, uses service account credentials
         from platogram.llm.gemini import Model
-        return Model(full_model_name.split("/")[-1], key)
+        return Model(model_name)
     else:
-        raise ValueError(f"Unsupported language model: {full_model_name}")
+        raise ValueError(f"Unsupported model type: {model_type}")

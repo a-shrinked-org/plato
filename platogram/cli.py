@@ -56,18 +56,17 @@ def render_paragraph(p: str, render_reference_fn: Callable[[int], str]) -> str:
 def process_url(
     url: str,
     library: Library,
+    model_type: str = "gemini",
     anthropic_api_key: str | None = None,
     assemblyai_api_key: str | None = None,
     extract_images: bool = False,
     lang: str | None = None,
-    gemini_api_key: str | None = None,
 ) -> Content:
     if not lang:
         lang = "en"
     
-    # Use Vertex AI with Gemini model
-    model_name = "gemini/gemini-2.0"
-    llm = plato.llm.get_model(model_name)
+    model_name = f"{model_type}/gemini-2.0" if model_type == "gemini" else "anthropic/claude-3-5-sonnet"
+    llm = plato.llm.get_model(model_name, anthropic_api_key)
     
     # Enhanced debug logging
     print("=== Debug: Process URL Configuration ===", file=sys.stderr)
@@ -120,26 +119,35 @@ def prompt_context(
     context: list[Content],
     prompt: Sequence[Assistant | User],
     context_size: Literal["small", "medium", "large"],
+    model_type: str = "gemini",
     anthropic_api_key: str | None,
 ) -> str:
     try:
-        model_name = "gemini/gemini-2.0"
+        # Select model based on type
+        model_name = f"{model_type}/gemini-2.0" if model_type == "gemini" else "anthropic/claude-3-5-sonnet"
         print(f"Debug: Using {model_name} for prompt_context", file=sys.stderr)
-        llm = plato.llm.get_model(model_name, gemini_api_key)
+        
+        # Initialize model (no key needed for Gemini)
+        llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
+        
+        # Make request
         response = llm.prompt(
             prompt=prompt,
             context=context,
             context_size=context_size
         )
+        
+        # Handle empty response
         if not response:
             print("Debug: Empty response from model", file=sys.stderr)
             return "Content generation failed. Please try again."
-        return response
-        
-        # Handle both string and structured responses
+            
+        # Handle structured responses
         if isinstance(response, dict):
             return str(response.get("text", "Content generation failed."))
-        return response
+            
+        # Return string response
+        return response.strip()
         
     except Exception as e:
         print(f"Debug: Error in prompt_context: {str(e)}", file=sys.stderr)
@@ -162,8 +170,13 @@ def main():
         help="URLs and files to query, if none provided, will use all content",
     )
     parser.add_argument("--lang", help="Content language: en, es")
+    parser.add_argument(
+        "--model",
+        choices=["anthropic", "gemini"],
+        default="gemini",
+        help="Model to use for processing (default: gemini)"
+    )
     parser.add_argument("--anthropic-api-key", help="Anthropic API key")
-    parser.add_argument("--gemini-api-key", help="Google Gemini API key")
     parser.add_argument("--assemblyai-api-key", help="AssemblyAI API key (optional)")
     parser.add_argument(
         "--retrieve", default=None, help="Number of results to retrieve"
@@ -203,6 +216,15 @@ def main():
         lang = args.lang
     else:
         lang = "en"
+        
+    # In the same file where you process the arguments
+    if args.model == "gemini":
+        if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+            print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
+            exit(1)
+        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
+            exit(1)
 
     if args.retrieval_method == "semantic":
         library = plato.library.get_semantic_local_chroma(CACHE_DIR)
@@ -224,9 +246,9 @@ def main():
                 library,
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
+                model_type=args.model,
                 extract_images=args.images,
                 lang=lang,
-                gemini_api_key=args.gemini_api_key,
             )
             for url_or_file in args.inputs
         ]
@@ -250,7 +272,7 @@ def main():
 
         result += f"""\n\n{
             prompt_context(
-                context, prompt, args.context_size, args.anthropic_api_key,
+                context, prompt, args.context_size, model_type=args.model, args.anthropic_api_key,
             )}\n\n"""
 
     for content in context:
