@@ -30,8 +30,8 @@ google-api-python-client = "^2.141.0"
 stripe = "^10.8.0"
 telethon = "^1.36.0"
 google-genai = "^1.1.0"
-google-cloud-aiplatform = "^1.80.0"
-vertexai = "^1.71.1"
+google-cloud-aiplatform = "1.71.1"
+vertexai = "1.71.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"

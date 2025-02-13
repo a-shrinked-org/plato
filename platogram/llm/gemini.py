@@ -43,12 +43,12 @@ class Model:
             logger.info(f"Using credentials from: {credentials_path}")
             
             # Initialize Vertex AI client with explicit credentials
-            vertexai.init(
+            self.client = genai.Client(
+                credentials=credentials,
+                vertexai=True,
                 project=project_id,
-                location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1'),
-                credentials=credentials
+                location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
             )
-            self.client = genai.Client()
             
             logger.info(f"Authenticated as project: {credentials.project_id}")
             
