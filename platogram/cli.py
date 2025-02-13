@@ -244,9 +244,9 @@ def main():
             process_url(
                 url_or_file,
                 library,
-                args.anthropic_api_key,
-                args.assemblyai_api_key,
                 model_type=args.model,
+                anthropic_api_key=args.anthropic_api_key,
+                assemblyai_api_key=args.assemblyai_api_key,
                 extract_images=args.images,
                 lang=lang,
             )
