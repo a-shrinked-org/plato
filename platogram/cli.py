@@ -65,8 +65,8 @@ def process_url(
     if not lang:
         lang = "en"
     
-    model_name = f"{model_type}/gemini-2.0-flash-001" if model_type == "gemini" else "anthropic/claude-3-5-sonnet"
-    llm = plato.llm.get_model(model_name, anthropic_api_key)
+    model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
+    llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
     
     # Enhanced debug logging
     print("=== Debug: Process URL Configuration ===", file=sys.stderr)
@@ -119,39 +119,18 @@ def prompt_context(
     context: list[Content],
     prompt: Sequence[Assistant | User],
     context_size: Literal["small", "medium", "large"],
-    anthropic_api_key: str | None,
     model_type: str = "gemini",
+    anthropic_api_key: str | None = None,
 ) -> str:
-    try:
-        # Select model based on type
-        model_name = f"{model_type}/gemini-2.0" if model_type == "gemini" else "anthropic/claude-3-5-sonnet"
-        print(f"Debug: Using {model_name} for prompt_context", file=sys.stderr)
-        
-        # Initialize model (no key needed for Gemini)
-        llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
-        
-        # Make request
-        response = llm.prompt(
-            prompt=prompt,
-            context=context,
-            context_size=context_size
-        )
-        
-        # Handle empty response
-        if not response:
-            print("Debug: Empty response from model", file=sys.stderr)
-            return "Content generation failed. Please try again."
-            
-        # Handle structured responses
-        if isinstance(response, dict):
-            return str(response.get("text", "Content generation failed."))
-            
-        # Return string response
-        return response.strip()
-        
-    except Exception as e:
-        print(f"Debug: Error in prompt_context: {str(e)}", file=sys.stderr)
-        return "Content generation failed. Please try again."
+    model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
+    llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
+    
+    response = llm.prompt(
+        prompt=prompt,
+        context=context,
+        context_size=context_size,
+    )
+    return response
 
 
 def is_uri(s):
@@ -173,7 +152,7 @@ def main():
     parser.add_argument(
         "--model",
         choices=["anthropic", "gemini"],
-        default="gemini",
+        default="gemini",  # Make Gemini the default
         help="Model to use for processing (default: gemini)"
     )
     parser.add_argument("--anthropic-api-key", help="Anthropic API key")
@@ -219,12 +198,12 @@ def main():
         
     # In the same file where you process the arguments
     if args.model == "gemini":
-        if not os.getenv("GOOGLE_CLOUD_PROJECT"):
-            print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
-            exit(1)
-        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-            print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
-            exit(1)
+    if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+        print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
+        sys.exit(1)
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
+        sys.exit(1)
 
     if args.retrieval_method == "semantic":
         library = plato.library.get_semantic_local_chroma(CACHE_DIR)
