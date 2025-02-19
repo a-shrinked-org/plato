@@ -14,14 +14,13 @@ from platogram.types import Assistant, Content, User
 
 class Model:
     def __init__(self, model: str, key: str | None = None) -> None:
-    """Initialize Gemini model with Vertex AI.
-    
-    Requires environment variables:
-    - GOOGLE_CLOUD_PROJECT
-    - GOOGLE_APPLICATION_CREDENTIALS (service account key file path)
-    - GOOGLE_CLOUD_REGION (optional, defaults to us-central1)
-    """
-    try:
+        """Initialize Gemini model with Vertex AI.
+        
+        Requires environment variables:
+        - GOOGLE_CLOUD_PROJECT
+        - GOOGLE_APPLICATION_CREDENTIALS (service account key file path)
+        - GOOGLE_CLOUD_REGION (optional, defaults to us-central1)
+        """
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
@@ -57,14 +56,16 @@ class Model:
             self.model_name = "gemini-2.0-flash-001"
             logger.info(f"Using model: {self.model_name}")
             
+            # Rate limiting parameters
+            self.last_request_time = 0
+            self.min_request_interval = 1.0
+            self.max_retries = 3
+            self.base_wait_time = 2
+            
         except Exception as e:
             logger.error(f"Initialization error: {str(e)}")
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
-            
-    except Exception as e:
-        print(f"Critical error during Gemini initialization: {str(e)}", file=sys.stderr)
-        raise
-
+    
     def prompt_model(
         self,
         messages: Sequence[User | Assistant],
@@ -96,12 +97,12 @@ class Model:
                     content = m.get("content", "")
                 else:
                     raise ValueError(f"Unsupported message type: {type(m)}")
-
+    
                 contents.append(types.Content(
                     parts=[{"text": str(content)}],
                     role=role
                 ))
-
+    
             for attempt in range(self.max_retries):
                 try:
                     logger.info(f"Attempt {attempt + 1}/{self.max_retries}")
@@ -115,7 +116,7 @@ class Model:
                     
                     if tools:
                         config.tools = tools
-
+    
                     # Add debug logging
                     logger.info(f"Debug: Request contents: {contents[:100]}...")  # First 100 chars
                     
