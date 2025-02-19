@@ -61,65 +61,54 @@ def render_paragraph(p: str, render_reference_fn: Callable[[int], str]) -> str:
 
 
 def process_url(
-    url: str,
+    url_or_file: str,
     library: Library,
-    model_type: str = "gemini",
     anthropic_api_key: str | None = None,
     assemblyai_api_key: str | None = None,
+    model_type: str = "gemini",  # Default to gemini
     extract_images: bool = False,
     lang: str | None = None,
 ) -> Content:
-    if not lang:
-        lang = "en"
-    
-    model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
-    llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
-    
-    # Enhanced debug logging
-    print("=== Debug: Process URL Configuration ===", file=sys.stderr)
-    print(f"URL: {url}", file=sys.stderr)
-    print(f"Model: {model_name}", file=sys.stderr)
-    print(f"Project ID: {os.getenv('GOOGLE_CLOUD_PROJECT')}", file=sys.stderr)
-    print(f"Credentials: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}", file=sys.stderr)
-    print(f"Language: {lang}", file=sys.stderr)
-    print("===================================", file=sys.stderr)
-    
-    # Initialize ASR model only once
-    asr = (
-        plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
-        if assemblyai_api_key
-        else None
-    )
-    
-    id = make_filesystem_safe(url)
+    """Process a URL or file."""
+    print("=== Debug: Process URL Configuration ===")
+    print(f"URL: {url_or_file}")
+    print(f"Model: {model_type}")
+    print(f"Project ID: {os.getenv('GOOGLE_CLOUD_PROJECT')}")
+    print(f"Credentials: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+    print(f"Language: {lang}")
+    print("===================================")
 
-    if library.exists(id):
-        return library.get_content(id)
+    # Always initialize ASR if we have the key
+    asr = None
+    if assemblyai_api_key:
+        print("Debug: Initializing ASR with AssemblyAI")
+        asr = plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
+    
+    # Extract transcript first
+    print("Debug: Starting transcript extraction")
+    try:
+        transcript = plato.extract_transcript(url_or_file, asr, lang=lang)
+    except ValueError as e:
+        if "No subtitles found and no ASR model provided" in str(e):
+            print("Error: Audio file detected but no ASR key provided. Please set ASSEMBLYAI_API_KEY")
+            raise
+        raise
 
-    with tqdm(total=4, desc=f"Processing {url}", file=sys.stderr) as pbar:
-        print("Debug: Starting transcript extraction", file=sys.stderr)
-        transcript = plato.extract_transcript(url, asr, lang=lang)
-        pbar.update(1)
-        
-        pbar.set_description("Indexing content")
-        print("Debug: Starting content indexing", file=sys.stderr)
-        content = plato.index(transcript, llm, lang=lang)
-        pbar.update(1)
-        if extract_images:
-            print("Debug: Extracting images", file=sys.stderr)
-            pbar.set_description("Extracting images")
-            images_dir = library.home / id
-            images_dir.mkdir(exist_ok=True)
-            timestamps_ms = [event.time_ms for event in content.transcript]
-            images = ingest.extract_images(url, images_dir, timestamps_ms)
-            content.images = [str(image.relative_to(library.home)) for image in images]
-            pbar.update(1)
-            
-        pbar.set_description("Saving content")
-        print("Debug: Saving content", file=sys.stderr)
-        library.put(id, content)
-        pbar.update(1)
-
+    # Initialize LLM after transcript
+    print(f"Debug: Initializing LLM model: {model_type}")
+    llm = plato.llm.get_model(f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}", anthropic_api_key if model_type == "anthropic" else None)
+    
+    # Process content
+    content = plato.index(transcript, llm, lang=lang)
+    
+    if extract_images:
+        print("Debug: Extracting images")
+        images_dir = library.home / make_filesystem_safe(url_or_file)
+        images_dir.mkdir(exist_ok=True)
+        timestamps_ms = [event.time_ms for event in content.transcript]
+        images = ingest.extract_images(url_or_file, images_dir, timestamps_ms)
+        content.images = [str(image.relative_to(library.home)) for image in images]
+    
     return content
 
 def prompt_context(
@@ -230,9 +219,9 @@ def main():
             process_url(
                 url_or_file,
                 library,
-                model_type=args.model,
-                anthropic_api_key=args.anthropic_api_key,
-                assemblyai_api_key=args.assemblyai_api_key,
+                args.anthropic_api_key,
+                args.assemblyai_api_key,
+                args.model,
                 extract_images=args.images,
                 lang=lang,
             )
