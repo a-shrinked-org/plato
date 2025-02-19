@@ -131,24 +131,6 @@ def prompt_context(
             context_size=context_size,
         )
         return response
-    
-if args.generate:
-        if not args.query:
-            raise ValueError("Query is required for generation")
-        
-        if args.prefill:
-            prompt = [User(content=args.query), Assistant(content=args.prefill)]
-        else:
-            prompt = [User(content=args.query)]
-        
-        result += f"""\n\n{
-            prompt_context(
-                context=context,
-                prompt=prompt,
-                context_size=args.context_size,
-                model_type=args.model,
-                anthropic_api_key=args.anthropic_api_key
-            )}\n\n"""
 
 def is_uri(s):
     try:
@@ -258,18 +240,22 @@ def main():
 
     result = ""
     if args.generate:
-        if not args.query:
-            raise ValueError("Query is required for generation")
-
-        if args.prefill:
-            prompt = [User(content=args.query), Assistant(content=args.prefill)]
-        else:
-            prompt = [User(content=args.query)]
-
-        result += f"""\n\n{
-            prompt_context(
-                context, prompt, args.context_size, args.anthropic_api_key, model_type=args.model,
-            )}\n\n"""
+    if not args.query:
+        raise ValueError("Query is required for generation")
+    
+    if args.prefill:
+        prompt = [User(content=args.query), Assistant(content=args.prefill)]
+    else:
+        prompt = [User(content=args.query)]
+    
+    result += f"""\n\n{
+        prompt_context(
+            context=context,
+            prompt=prompt,
+            context_size=args.context_size,
+            model_type=args.model,
+            anthropic_api_key=args.anthropic_api_key
+        )}\n\n"""
 
     for content in context:
         if args.images and content.images:
