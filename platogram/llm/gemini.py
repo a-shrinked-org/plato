@@ -131,6 +131,7 @@ class Model:
                             else:
                                 # Already in Gemini format
                                 tool_definitions.append(tool)
+                                
                         config.tools = tool_definitions
         
                     # Add debug logging

@@ -27,7 +27,14 @@ def format_time(ms):
 def render_reference(url: str, transcript: list[plato.SpeechEvent], i: int) -> str:
     link = f" [[{i+1}]](#ts-{i + 1})"
     return link
-
+    
+def get_chapter(passage_marker: int, chapter_markers: list[int]) -> int | None:
+    for start, end in zip(chapter_markers[:-1], chapter_markers[1:]):
+        if start <= passage_marker < end:
+            return start
+    if passage_marker >= chapter_markers[-1]:
+        return chapter_markers[-1]
+    return None
 
 def render_transcript(first, last, transcript, url):
     return "\n".join(
@@ -286,9 +293,10 @@ def main():
             passages = ""
             if args.chapters:
                 current_chapter = None
+                chapter_markers = list(content.chapters.keys())
                 for passage in content.passages:
                     passage_markers = [int(m) for m in re.findall(r"【(\d+)】", passage)]
-                    chapter_marker = get_chapter(passage_markers[0]) if passage_markers else None
+                    chapter_marker = get_chapter(passage_markers[0], chapter_markers) if passage_markers else None
                     if chapter_marker is not None and chapter_marker != current_chapter:
                         passages += f"### {content.chapters[chapter_marker]}\n\n"
                         current_chapter = chapter_marker
