@@ -151,14 +151,12 @@ def main():
     parser.add_argument(
         "--model",
         choices=["anthropic", "gemini"],
-        default="gemini",  # Make Gemini the default
+        default="gemini",
         help="Model to use for processing (default: gemini)"
     )
     parser.add_argument("--anthropic-api-key", help="Anthropic API key")
     parser.add_argument("--assemblyai-api-key", help="AssemblyAI API key (optional)")
-    parser.add_argument(
-        "--retrieve", default=None, help="Number of results to retrieve"
-    )
+    parser.add_argument("--retrieve", default=None, help="Number of results to retrieve")
     parser.add_argument("--generate", action="store_true", help="Generate content")
     parser.add_argument("--query", help="Query for retrieval and generation")
     parser.add_argument(
@@ -186,16 +184,17 @@ def main():
         help="Nudge the model to continue the provided sentence",
     )
     parser.add_argument(
-        "--inline-references", action="store_true", help="Render references inline"
+        "--inline-references", 
+        action="store_true", 
+        help="Render references inline"
     )
+    
     args = parser.parse_args()
-
-    if args.lang:
-        lang = args.lang
-    else:
-        lang = "en"
-        
-    # In the same file where you process the arguments
+    
+    # Set language
+    lang = args.lang if args.lang else "en"
+    
+    # Validate Gemini requirements
     if args.model == "gemini":
         if not os.getenv("GOOGLE_CLOUD_PROJECT"):
             print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
@@ -203,7 +202,8 @@ def main():
         if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
             print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
             sys.exit(1)
-
+    
+    # Initialize library based on retrieval method
     if args.retrieval_method == "semantic":
         library = plato.library.get_semantic_local_chroma(CACHE_DIR)
     elif args.retrieval_method == "keyword":
@@ -212,7 +212,8 @@ def main():
         library = plato.library.get_local_dumb(CACHE_DIR)
     else:
         raise ValueError(f"Invalid retrieval method: {args.retrieval_method}")
-
+    
+    # Get content context
     if not args.inputs:
         ids = library.ls()
         context = [library.get_content(id) for id in ids]
@@ -230,56 +231,57 @@ def main():
             )
             for url_or_file in args.inputs
         ]
-
+    
+    # Handle keyword retrieval
     if args.retrieval_method == "keyword":
         library.put(ids[0], context[0])
-
+    
+    # Handle content retrieval
     if args.retrieve:
         n_results = int(args.retrieve)
         context, scores = library.retrieve(args.query, n_results, ids)
-
+    
+    # Initialize result string
     result = ""
+    
+    # Handle content generation
     if args.generate:
-    if not args.query:
-        raise ValueError("Query is required for generation")
-    
-    if args.prefill:
-        prompt = [User(content=args.query), Assistant(content=args.prefill)]
-    else:
+        if not args.query:
+            raise ValueError("Query is required for generation")
+        
         prompt = [User(content=args.query)]
+        if args.prefill:
+            prompt = [User(content=args.query), Assistant(content=args.prefill)]
+        
+        result += f"""\n\n{
+            prompt_context(
+                context=context,
+                prompt=prompt,
+                context_size=args.context_size,
+                model_type=args.model,
+                anthropic_api_key=args.anthropic_api_key
+            )}\n\n"""
     
-    result += f"""\n\n{
-        prompt_context(
-            context=context,
-            prompt=prompt,
-            context_size=args.context_size,
-            model_type=args.model,
-            anthropic_api_key=args.anthropic_api_key
-        )}\n\n"""
-
+    # Process each content item
     for content in context:
+        # Handle images
         if args.images and content.images:
             images = "\n".join([str(image) for image in content.images])
             result += f"""{images}\n\n\n\n"""
-
+    
+        # Handle origin URL
         if args.origin:
             result += f"""{content.origin}\n\n\n\n"""
-
+    
+        # Handle title
         if args.title:
             result += f"""{content.title}\n\n\n\n"""
-
+    
+        # Handle abstract
         if args.abstract:
             result += f"""{content.summary}\n\n\n\n"""
-
-        def get_chapter(passage_marker: int) -> int | None:
-            chapter_markers = list(content.chapters.keys())
-            for start, end in zip(chapter_markers[:-1], chapter_markers[1:]):
-                if start <= passage_marker < end:
-                    return start
-            if passage_marker >= chapter_markers[-1]:
-                return chapter_markers[-1]
-            return None
-
+    
+        # Handle passages and chapters
         if args.passages:
             passages = ""
             if args.chapters:
@@ -295,25 +297,27 @@ def main():
                 passages = "\n\n".join(
                     passage.strip() for passage in content.passages
                 )
-
             result += f"""{passages}\n\n\n\n"""
-
+    
+        # Handle chapters without passages
         if args.chapters and not args.passages:
             chapters = "\n".join(
                 f"- {chapter} [{i}]" for i, chapter in content.chapters.items()
             )
             result += f"""{chapters}\n\n\n\n"""
-
+    
+        # Handle references
         if args.references:
             result += f"""{render_transcript(0, len(content.transcript), content.transcript, content.origin)}\n\n\n\n"""
-
+    
+        # Handle inline references
         if args.inline_references:
             render_reference_fn = lambda i: render_reference(
                 content.origin or "", content.transcript, i
             )
         else:
             render_reference_fn = lambda _: ""
-
+    
         result = render_paragraph(result, render_reference_fn)
 
     print(result)
