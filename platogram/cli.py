@@ -198,12 +198,12 @@ def main():
         
     # In the same file where you process the arguments
     if args.model == "gemini":
-    if not os.getenv("GOOGLE_CLOUD_PROJECT"):
-        print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
-        sys.exit(1)
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
-        sys.exit(1)
+        if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+            print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
+            sys.exit(1)
+        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
+            sys.exit(1)
 
     if args.retrieval_method == "semantic":
         library = plato.library.get_semantic_local_chroma(CACHE_DIR)

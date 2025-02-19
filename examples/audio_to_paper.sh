@@ -2,6 +2,13 @@
 
 set -e
 
+DEBUG_LOG() {
+    echo "[DEBUG] $*" >&2
+}
+
+DEBUG_LOG "Script starting with debug logging enabled"
+DEBUG_LOG "Testing stderr output"
+
 # Constants
 MAX_RETRIES=2
 RETRY_DELAY=2
@@ -159,7 +166,7 @@ esac
     DEBUG_LOG "Language: $LANG"
     DEBUG_LOG "Images enabled: $IMAGES"
     DEBUG_LOG "=============================="
-} 
+}
 
 # Load language-specific prompts
 case "$LANG" in
