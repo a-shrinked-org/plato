@@ -116,22 +116,39 @@ def process_url(
     return content
 
 def prompt_context(
-    context: list[Content],
-    prompt: Sequence[Assistant | User],
-    context_size: Literal["small", "medium", "large"],
-    model_type: str = "gemini",
-    anthropic_api_key: str | None = None,
-) -> str:
-    model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
-    llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
+        context: list[Content],
+        prompt: Sequence[Assistant | User],
+        context_size: Literal["small", "medium", "large"],
+        model_type: str = "gemini",
+        anthropic_api_key: str | None = None,
+    ) -> str:
+        model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
+        llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
+        
+        response = llm.prompt(
+            prompt=prompt,
+            context=context,
+            context_size=context_size,
+        )
+        return response
     
-    response = llm.prompt(
-        prompt=prompt,
-        context=context,
-        context_size=context_size,
-    )
-    return response
-
+if args.generate:
+        if not args.query:
+            raise ValueError("Query is required for generation")
+        
+        if args.prefill:
+            prompt = [User(content=args.query), Assistant(content=args.prefill)]
+        else:
+            prompt = [User(content=args.query)]
+        
+        result += f"""\n\n{
+            prompt_context(
+                context=context,
+                prompt=prompt,
+                context_size=args.context_size,
+                model_type=args.model,
+                anthropic_api_key=args.anthropic_api_key
+            )}\n\n"""
 
 def is_uri(s):
     try:

@@ -97,15 +97,16 @@ class Model:
                     content = m.get("content", "")
                 else:
                     raise ValueError(f"Unsupported message type: {type(m)}")
-    
+        
                 contents.append(types.Content(
                     parts=[{"text": str(content)}],
                     role=role
                 ))
-    
+        
             for attempt in range(self.max_retries):
                 try:
                     logger.info(f"Attempt {attempt + 1}/{self.max_retries}")
+                    
                     # Configure generation parameters
                     config = types.GenerateContentConfig(
                         temperature=temperature,
@@ -114,11 +115,26 @@ class Model:
                         top_k=40,
                     )
                     
+                    # Handle tools differently for Gemini
                     if tools:
-                        config.tools = tools
-    
+                        tool_definitions = []
+                        for tool in tools:
+                            if "input_schema" in tool:
+                                # Convert from Anthropic format to Gemini format
+                                tool_definitions.append({
+                                    "function_declarations": [{
+                                        "name": tool["name"],
+                                        "description": tool["description"],
+                                        "parameters": tool["input_schema"]
+                                    }]
+                                })
+                            else:
+                                # Already in Gemini format
+                                tool_definitions.append(tool)
+                        config.tools = tool_definitions
+        
                     # Add debug logging
-                    logger.info(f"Debug: Request contents: {contents[:100]}...")  # First 100 chars
+                    logger.info(f"Debug: Request contents: {str(contents)[:100]}...")
                     
                     # Make request to Vertex AI
                     response = self.client.models.generate_content(
@@ -131,7 +147,9 @@ class Model:
                     self.last_request_time = time.time()
                     
                     if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                        return response.candidates[0].content.parts[0].function_call.args
+                        return {
+                            k: v for k, v in response.candidates[0].content.parts[0].function_call.args.items()
+                        }
                     
                     return response.text.strip()
                     
