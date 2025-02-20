@@ -8,6 +8,8 @@ from google import genai
 from google.generativeai import GenerativeModel
 import google.generativeai as genai
 from google.oauth2 import service_account
+from google.generativeai.types import content_types
+from google.generativeai.types import model_types
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
