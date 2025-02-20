@@ -5,28 +5,29 @@ import logging
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
-from google.generativeai import GenerativeModel
-from google.generativeai.types import content_types, model_types  # Added proper imports
+from google.genai import types
 from google.oauth2 import service_account
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
 
 class Model:
-    def __init__(self, model: str = "gemini-pro", key: str | None = None):
+    def __init__(self, model: str = "gemini-2.0-flash-001", key: str | None = None):
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
-        # Load credentials
+        # Load credentials and create client
         credentials = service_account.Credentials.from_service_account_file(
             os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         )
         
-        # Configure the Gemini client
-        genai.configure(credentials=credentials)
+        # Create client for Vertex AI
+        self.client = genai.Client(
+            vertexai=True,
+            project=os.getenv('GOOGLE_CLOUD_PROJECT'),
+            credentials=credentials
+        )
         
-        # Initialize the model
-        self.model = GenerativeModel(model_name=model)
         self.model_name = model
         print(f"Debug: Using model: {model}")
 
@@ -42,13 +43,12 @@ class Model:
         logger = logging.getLogger('gemini')
         try:
             logger.info(f"Starting request with model: {self.model_name}")
-            logger.info(f"Temperature: {temperature}, Max tokens: {max_tokens}")
             
-            # Convert messages to Gemini format
+            # Convert messages to content format
             contents = []
             if system:
-                contents.append(content_types.Content(  # Use proper content_types
-                    parts=[{"text": system}],
+                contents.append(types.Content(
+                    parts=[types.Part.from_text(text=system)],
                     role="user"
                 ))
             
@@ -61,14 +61,14 @@ class Model:
                     content = m.get("content", "")
                 else:
                     raise ValueError(f"Unsupported message type: {type(m)}")
-        
-                contents.append(content_types.Content(  # Use proper content_types
-                    parts=[{"text": str(content)}],
+                
+                contents.append(types.Content(
+                    parts=[types.Part.from_text(text=str(content))],
                     role=role
                 ))
 
-            # Configure generation config
-            generation_config = model_types.GenerationConfig(
+            # Configure generation
+            config = types.GenerateContentConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
                 top_p=0.95,
@@ -80,22 +80,23 @@ class Model:
                 function_declarations = []
                 for tool in tools:
                     if "input_schema" in tool:
-                        function_declarations.append({
-                            "name": tool["name"],
-                            "description": tool["description"],
-                            "parameters": tool["input_schema"]
-                        })
+                        function_declarations.append(types.FunctionDeclaration(
+                            name=tool["name"],
+                            description=tool["description"],
+                            parameters=tool["input_schema"]
+                        ))
                     else:
                         function_declarations.append(tool)
+                config.tools = [types.Tool(function_declarations=function_declarations)]
 
-            # Generate response
-            response = self.model.generate_content(
-                contents,
-                generation_config=generation_config,
-                tools=function_declarations if tools else None
+            # Generate content
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=config
             )
 
-            # Handle response based on type
+            # Handle function calls in response
             if response.candidates and response.candidates[0].content.parts[0].function_call:
                 return {
                     k: v for k, v in response.candidates[0].content.parts[0].function_call.args.items()
@@ -108,7 +109,7 @@ class Model:
             raise
 
     def count_tokens(self, text: str) -> int:
-        """Count tokens for a given text using Gemini's API"""
+        """Count tokens for a given text"""
         try:
             response = self.client.models.count_tokens(
                 model=self.model_name,
@@ -116,8 +117,8 @@ class Model:
             )
             return response.total_tokens
         except Exception as e:
-            # Fallback to rough estimation if API fails
-            return len(text.split()) * 2  # Rough approximation
+            # Fallback to rough estimation
+            return len(text.split()) * 2
 
     # (get_meta, get_chapters, get_paragraphs, prompt, render_context)
         
