@@ -6,18 +6,14 @@ from typing import Any, Generator, Literal, Sequence
 
 from google import genai
 from google.generativeai import GenerativeModel
-import google.generativeai as genai
+from google.generativeai.types import content_types, model_types  # Added proper imports
 from google.oauth2 import service_account
-from google.generativeai.types import content_types
-from google.generativeai.types import model_types
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
-from platogram.llm import LanguageModel
 
-class Model(LanguageModel):
+class Model:
     def __init__(self, model: str = "gemini-pro", key: str | None = None):
-        super().__init__()
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
@@ -33,93 +29,6 @@ class Model(LanguageModel):
         self.model = GenerativeModel(model_name=model)
         self.model_name = model
         print(f"Debug: Using model: {model}")
-        
-        # Set retry parameters
-        self.max_retries = 3
-        self.base_wait_time = 2
-        self.last_request_time = 0
-        
-        # Authenticate
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        if not project_id:
-            raise ValueError("GOOGLE_CLOUD_PROJECT environment variable not set")
-        print(f"Debug: Authenticated as project: {project_id}")
-
-    def _process_response(self, response) -> str:
-        """Safely process Gemini API response."""
-        try:
-            if hasattr(response, 'text'):
-                return response.text
-            if hasattr(response, 'parts'):
-                return response.parts[0].text
-            return str(response)
-        except Exception as e:
-            print(f"Debug: Error processing response: {str(e)}")
-            print(f"Debug: Response type: {type(response)}")
-            print(f"Debug: Response content: {response}")
-            return str(response)
-
-    def get_paragraphs(
-        self, 
-        content: str, 
-        examples: dict[str, list[str]], 
-        max_tokens: int = 4096,
-        temperature: float = 0.5,
-        lang: str | None = None,
-    ) -> list[str]:
-        """Get paragraphs using Gemini."""
-        try:
-            response = self.model.generate_content(content)
-            response.resolve()
-            return [self._process_response(response)]
-        except Exception as e:
-            print(f"Debug: Error in get_paragraphs: {str(e)}")
-            return [content]
-
-    def get_meta(
-        self, 
-        paragraphs: list[str], 
-        lang: str | None = None
-    ) -> tuple[str, str]:
-        """Get metadata using Gemini."""
-        try:
-            content = "\n".join(paragraphs)
-            response = self.model.generate_content(
-                f"Generate a title and summary for this content:\n{content}"
-            )
-            response.resolve()
-            result = self._process_response(response)
-            # Simple parsing of title and summary
-            parts = result.split('\n', 1)
-            title = parts[0] if parts else "Generated Title"
-            summary = parts[1] if len(parts) > 1 else "Generated Summary"
-            return title.strip(), summary.strip()
-        except Exception as e:
-            print(f"Debug: Error in get_meta: {str(e)}")
-            return "Generated Title", "Generated Summary"
-
-    def get_chapters(
-        self, 
-        paragraphs: list[str], 
-        lang: str | None = None
-    ) -> dict[int, str]:
-        """Get chapters using Gemini."""
-        try:
-            content = "\n".join(paragraphs)
-            response = self.model.generate_content(
-                f"Generate chapter titles for this content:\n{content}"
-            )
-            response.resolve()
-            result = self._process_response(response)
-            # Simple chapter parsing
-            chapters = {}
-            for i, line in enumerate(result.split('\n')):
-                if line.strip():
-                    chapters[i] = line.strip()
-            return chapters if chapters else {0: "All Content"}
-        except Exception as e:
-            print(f"Debug: Error in get_chapters: {str(e)}")
-            return {0: "All Content"}
 
     def prompt_model(
         self,
@@ -138,7 +47,7 @@ class Model(LanguageModel):
             # Convert messages to Gemini format
             contents = []
             if system:
-                contents.append(types.Content(
+                contents.append(content_types.Content(  # Use proper content_types
                     parts=[{"text": system}],
                     role="user"
                 ))
@@ -153,75 +62,50 @@ class Model(LanguageModel):
                 else:
                     raise ValueError(f"Unsupported message type: {type(m)}")
         
-                contents.append(types.Content(
+                contents.append(content_types.Content(  # Use proper content_types
                     parts=[{"text": str(content)}],
                     role=role
                 ))
-        
-            for attempt in range(self.max_retries):
-                try:
-                    logger.info(f"Attempt {attempt + 1}/{self.max_retries}")
-                    
-                    # Configure generation parameters
-                    config = types.GenerateContentConfig(
-                        temperature=temperature,
-                        max_output_tokens=max_tokens,
-                        top_p=0.95,
-                        top_k=40,
-                    )
-                    
-                    # Handle tools differently for Gemini
-                    if tools:
-                        tool_definitions = []
-                        for tool in tools:
-                            if "input_schema" in tool:
-                                # Convert from Anthropic format to Gemini format
-                                tool_definitions.append({
-                                    "function_declarations": [{
-                                        "name": tool["name"],
-                                        "description": tool["description"],
-                                        "parameters": tool["input_schema"]
-                                    }]
-                                })
-                            else:
-                                # Already in Gemini format
-                                tool_definitions.append(tool)
-                                
-                        config.tools = tool_definitions
-        
-                    # Add debug logging
-                    logger.info(f"Debug: Request contents: {str(contents)[:100]}...")
-                    
-                    # Make request to Vertex AI
-                    response = self.client.models.generate_content(
-                        model=self.model_name,
-                        contents=contents,
-                        config=config
-                    )
-                    
-                    logger.info("Request successful")
-                    self.last_request_time = time.time()
-                    
-                    if hasattr(response, 'candidates') and response.candidates[0].content.parts[0].function_call:
-                        return {
-                            k: v for k, v in response.candidates[0].content.parts[0].function_call.args.items()
-                        }
-                    
-                    return response.text.strip()
-                    
-                except Exception as e:
-                    logger.error(f"Error in attempt {attempt + 1}: {str(e)}")
-                    if attempt < self.max_retries - 1:
-                        wait_time = self.base_wait_time ** attempt
-                        logger.info(f"Waiting {wait_time}s before retry")
-                        time.sleep(wait_time)
-                        continue
-                    raise
+
+            # Configure generation config
+            generation_config = model_types.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                top_p=0.95,
+                top_k=40,
+            )
+
+            # Handle tools if provided
+            if tools:
+                function_declarations = []
+                for tool in tools:
+                    if "input_schema" in tool:
+                        function_declarations.append({
+                            "name": tool["name"],
+                            "description": tool["description"],
+                            "parameters": tool["input_schema"]
+                        })
+                    else:
+                        function_declarations.append(tool)
+
+            # Generate response
+            response = self.model.generate_content(
+                contents,
+                generation_config=generation_config,
+                tools=function_declarations if tools else None
+            )
+
+            # Handle response based on type
+            if response.candidates and response.candidates[0].content.parts[0].function_call:
+                return {
+                    k: v for k, v in response.candidates[0].content.parts[0].function_call.args.items()
+                }
             
-            raise Exception("Max retries exceeded")
-            
+            return response.text.strip()
+
         except Exception as e:
-            raise e
+            logger.error(f"Error in prompt_model: {str(e)}")
+            raise
 
     def count_tokens(self, text: str) -> int:
         """Count tokens for a given text using Gemini's API"""
