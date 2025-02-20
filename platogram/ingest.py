@@ -230,7 +230,7 @@ def extract_transcript(
             
             # Handle AssemblyAI transcription
             if hasattr(asr_model, 'speech_model'):  # Check if it's AssemblyAI Model
-                speech_events = asr_model.transcribe(file, lang=lang)
+                speech_events = asr_model.transcribe(file)  # Remove lang parameter here
             else:
                 # Handle other ASR models that might use lang parameter
                 speech_events = asr_model.transcribe(file, lang=lang)
