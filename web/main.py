@@ -218,67 +218,50 @@ async def reset(user_id: str = Depends(verify_token_and_get_user_id)):
 
     return {"message": "Session reset"}
 
-async def audio_to_paper(
-        url: str,
-        lang: Language,
-        output_dir: Path,
-        user_id: str,
-        model_flag: str = ""
-    ) -> tuple[str, str]:
-        script_path = Path.cwd() / "examples" / "audio_to_paper.sh"
-        command = f'cd {output_dir} && {script_path} "{url}" --lang {lang} --verbose {model_flag}'
+async def audio_to_paper(url: str, lang: Language, output_dir: Path, user_id: str, model_flag: str = ""):
+    script_path = Path.cwd() / "examples" / "audio_to_paper.sh"
+    command = f'cd {output_dir} && {script_path} "{url}" --lang {lang} --verbose {model_flag}'
+    
+    logfire.info(f"Starting conversion: {command}")
+    
+    if user_id in processes:
+        raise RuntimeError("Conversion already in progress.")
+    
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        shell=True,
+    )
+    processes[user_id] = process
+    
+    stdout_data = []
+    stderr_data = []
+    
+    try:
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
+            decoded = line.decode().strip()
+            stdout_data.append(decoded)
+            logfire.info(f"Progress: {decoded}")
+            
+            err = await process.stderr.readline()
+            if err:
+                decoded_err = err.decode().strip()
+                stderr_data.append(decoded_err)
+                logfire.warning(f"Error: {decoded_err}")
         
-        logfire.info(f"Executing command: {command}")
+        await process.wait()
         
+        if process.returncode != 0:
+            raise RuntimeError(f"Process failed with code {process.returncode}")
+            
+        return '\n'.join(stdout_data), '\n'.join(stderr_data)
+    finally:
         if user_id in processes:
-            raise RuntimeError("Conversion already in progress.")
-        
-        process = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            shell=True,
-        )
-        processes[user_id] = process
-        
-        # Store output
-        stdout_data = []
-        stderr_data = []
-        
-        try:
-            # Stream output in real-time while process is running
-            while True:
-                # Read from stdout
-                line = await process.stdout.readline()
-                if line:
-                    decoded_line = line.decode().strip()
-                    stdout_data.append(decoded_line)
-                    logfire.info(f"Progress: {decoded_line}")
-                else:
-                    break
-        
-                # Check stderr for any errors
-                err_line = await process.stderr.readline()
-                if err_line:
-                    decoded_err = err_line.decode().strip()
-                    stderr_data.append(decoded_err)
-                    logfire.warning(f"Error output: {decoded_err}")
-        
-            # Wait for process to complete
-            await process.wait()
-        
-            if process.returncode != 0:
-                raise RuntimeError(
-                    f"Failed to execute {command} with return code {process.returncode}.\n"
-                    f"stdout:\n{''.join(stdout_data)}\n"
-                    f"stderr:\n{''.join(stderr_data)}"
-                )
-        
-            return '\n'.join(stdout_data), '\n'.join(stderr_data)
-        
-        finally:
-            if user_id in processes:
-                del processes[user_id]
+            del processes[user_id]
 
 async def send_email(user_id: str, subj: str, body: str, files: list[Path]):
     loop = asyncio.get_running_loop()
