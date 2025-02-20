@@ -227,14 +227,7 @@ def extract_transcript(
             speech_events = parse_waffly(download_file(url, Path(temp_dir)))
         elif asr_model is not None:
             file = download_audio(url, Path(temp_dir))
-            
-            # Handle AssemblyAI transcription
-            if hasattr(asr_model, 'speech_model'):  # Check if it's AssemblyAI Model
-                speech_events = asr_model.transcribe(file)  # Remove lang parameter here
-            else:
-                # Handle other ASR models that might use lang parameter
-                speech_events = asr_model.transcribe(file, lang=lang)
-                
+            speech_events = asr_model.transcribe(file, lang=lang)
         elif has_subtitles(url):
             speech_events = parse_subtitles(
                 download_subtitles(url, Path(temp_dir), lang=lang)

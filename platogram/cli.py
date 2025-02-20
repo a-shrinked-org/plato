@@ -89,20 +89,7 @@ def process_url(
     asr = None
     if assemblyai_api_key:
         print("Debug: Initializing ASR with AssemblyAI")
-        import assemblyai as aai
-        
-        # Configure faster polling
-        aai.settings.polling_interval = 1.0
-        
-        # Convert language code to AssemblyAI format
-        aai_lang = "en" if lang == "en" else "es"
-        
-        # Configure transcriber with language
-        config = aai.TranscriptionConfig(
-            language_code=aai_lang
-        )
-        asr = aai.Transcriber(config=config)
-        asr.api_key = assemblyai_api_key
+        asr = plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
     
     # Extract transcript
     print("Debug: Starting transcript extraction")
