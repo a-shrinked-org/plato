@@ -10,6 +10,7 @@ from google.genai import types
 from google.oauth2 import service_account
 from google.generativeai import GenerativeModel
 import google.generativeai as genai
+from platogram.llm.base import LanguageModel
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
