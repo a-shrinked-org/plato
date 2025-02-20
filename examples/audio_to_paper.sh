@@ -2,23 +2,14 @@
 
 set -e
 
-DEBUG_LOG() {
-    echo "[DEBUG] $*" >&2
-}
-
-DEBUG_LOG "Script starting with debug logging enabled"
-DEBUG_LOG "Testing stderr output"
-
 # Constants
-MAX_RETRIES=2
+MAX_RETRIES=3
 RETRY_DELAY=2
+STATUS_TIMEOUT=300  # 5 minutes timeout
 
 DEBUG_LOG() {
     echo "[DEBUG] $*" >&2
 }
-
-DEBUG_LOG "Script starting with debug logging enabled"
-DEBUG_LOG "Testing stderr output"
 
 # Function to handle errors
 handle_error() {
@@ -29,54 +20,73 @@ handle_error() {
 
 trap 'handle_error ${LINENO}' ERR
 
+# Function to check status with timeout
+check_status_with_timeout() {
+    local start_time=$(date +%s)
+    
+    while true; do
+        if plato --status "$URL" $MODEL_FLAG | grep -q "complete"; then
+            return 0
+        fi
+        
+        current_time=$(date +%s)
+        if ((current_time - start_time > STATUS_TIMEOUT)); then
+            echo "Error: Status check timed out after $STATUS_TIMEOUT seconds"
+            return 1
+        fi
+        
+        sleep 5
+    done
+}
+
 # Function for retrying commands with exponential backoff and content validation
 get_with_retry() {
     local cmd="$1"
     local error_msg="$2"
-    local content_type="$3"  # "title", "abstract", etc.
+    local content_type="$3"
     local retries=0
     local output=""
-    local max_wait=30  # Maximum wait time in seconds
+    local max_wait=30
     
     while ((retries < MAX_RETRIES)); do
-        # First check if transcription/indexing is complete
-        if ! plato --status "$URL" | grep -q "complete"; then
-            echo "Content still processing, waiting..." >&2
-            sleep $((min(RETRY_DELAY ** retries, max_wait)))
-            ((retries++))
-            continue
+        # Check if content processing is complete
+        if ! check_status_with_timeout; then
+            echo "Content processing check failed" >&2
+            return 1
         fi
         
-        output=$(eval "$cmd" || true) 
+        DEBUG_LOG "Executing command: $cmd"
+        output=$(eval "$cmd" || true)
+        DEBUG_LOG "Command output for $content_type: $output"
         
         # Content-specific validation
-        case "$content_type" in
-            "title")
-                if [ -n "$output" ] && [ "$output" != "Missing Title" ]; then
+        if [ -n "$output" ]; then
+            case "$content_type" in
+                "title")
+                    if [ "$output" != "Missing Title" ]; then
+                        echo "$output"
+                        return 0
+                    fi
+                    ;;
+                "abstract")
+                    if [ "$output" != "Missing Summary" ]; then
+                        echo "$output"
+                        return 0
+                    fi
+                    ;;
+                *)
                     echo "$output"
                     return 0
-                fi
-                ;;
-            "abstract")
-                if [ -n "$output" ] && [ "$output" != "Missing Summary" ]; then
-                    echo "$output"
-                    return 0
-                fi
-                ;;
-            *)
-                if [ -n "$output" ]; then
-                    echo "$output"
-                    return 0
-                fi
-                ;;
-        esac
+                    ;;
+            esac
+        fi
         
         ((retries++))
         echo "Attempt $retries failed for $content_type, retrying in $((RETRY_DELAY ** retries)) seconds..." >&2
         sleep $((min(RETRY_DELAY ** retries, max_wait)))
     done
     
-    # If we failed to get content, try to generate it
+    # Attempt generation fallback
     case "$content_type" in
         "title")
             output=$(plato --generate-title "$URL" --lang "$LANG" $MODEL_FLAG 2>/dev/null || echo "$error_msg")
@@ -103,8 +113,6 @@ LANG="en"
 VERBOSE="false"
 IMAGES="false"
 MODEL="gemini"
-
-DEBUG_LOG "Model set to: $MODEL"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -136,7 +144,7 @@ if [ -z "$URL" ]; then
     exit 1
 fi
 
-# Validate API keys and set model flags based on MODEL type
+# Configure model-specific settings
 case "$MODEL" in
 "gemini")
     if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
@@ -156,8 +164,13 @@ case "$MODEL" in
     fi
     MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
     ;;
+*)
+    echo "Error: Unsupported model: $MODEL"
+    exit 1
+    ;;
 esac
 
+# Log configuration
 {
     DEBUG_LOG "========= Configuration ========="
     DEBUG_LOG "Model type: $MODEL"
@@ -179,6 +192,7 @@ case "$LANG" in
     CONCLUSION_PREFILL=$'## Conclusion\n'
     ;;
 "es")
+    # Spanish prompts remain unchanged
     CONTRIBUTORS_PROMPT="Revise a fondo el <context> e identifique la lista de contribuyentes. Salida como lista Markdown: Nombre, Apellido, Título, Organización. Salida \"Desconocido\" si los contribuyentes no se conocen. Al final de la lista, agregue siempre \"- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.\". Comience con \"## Contribuyentes, Agradecimientos, Menciones\""
     CONTRIBUTORS_PREFILL=$'## Contribuyentes, Agradecimientos, Menciones\n'
     INTRODUCTION_PROMPT="Revise a fondo el <context> y escriba el capítulo \"Introducción\" para el artículo. Escriba en el estilo del original <context>. Use solo las palabras de <context>. Use comillas del original <context> cuando sea necesario. Asegúrese de incluir <markers>. Salida como Markdown. Comience con \"## Introducción\""
@@ -198,48 +212,42 @@ echo "IMAGES: $IMAGES"
 # Handle audio transcription
 if [ -z "$ASSEMBLYAI_API_KEY" ]; then
     echo "ASSEMBLYAI_API_KEY is not set. Retrieving text from URL (subtitles, etc)."
-    if ! plato "$URL" ${IMAGES:+--images} --lang "$LANG" >/dev/null; then
+    if ! plato "$URL" ${IMAGES:+--images} --lang "$LANG" $MODEL_FLAG >/dev/null; then
         echo "Error: Failed to retrieve text from URL"
         exit 1
     fi
 else
     echo "Transcribing audio to text using AssemblyAI..."
-    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" >/dev/null; then
+    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" $MODEL_FLAG >/dev/null; then
         echo "Error: Failed to transcribe audio"
         exit 1
     fi
 fi
 
-echo "Fetching title, abstract, passages, and references..."
-
-# Check if file is still processing
 echo "Checking content processing status..."
-if ! plato --status "$URL" | grep -q "complete"; then
-    echo "Waiting for content processing to complete..."
-    sleep 5
+if ! check_status_with_timeout; then
+    echo "Error: Content processing timed out"
+    exit 1
 fi
 
-echo "Debug: Model configuration:" >&2
-echo "Debug: Using model: $MODEL" >&2
-echo "Debug: GOOGLE_CLOUD_PROJECT: $GOOGLE_CLOUD_PROJECT" >&2
-echo "Debug: Using credentials from: $GOOGLE_APPLICATION_CREDENTIALS" >&2
+echo "Fetching content..."
 
 # Get content with retries and sanitization
-echo "Retrieving title..."
-DEBUG_LOG "Executing title command with Gemini"
+DEBUG_LOG "Retrieving title..."
 TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Title" "title")
 DEBUG_LOG "Retrieved title: $TITLE"
 
-echo "Retrieving abstract..."
-DEBUG_LOG "Executing abstract command with Gemini"
+DEBUG_LOG "Retrieving abstract..."
 ABSTRACT=$(get_with_retry "plato --abstract '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Summary" "abstract")
 DEBUG_LOG "Retrieved abstract: $ABSTRACT"
 
-echo "Retrieving passages..."
+DEBUG_LOG "Retrieving passages..."
 PASSAGES=$(get_with_retry "plato --passages --chapters --inline-references '$URL' --lang '$LANG' $MODEL_FLAG" "No content available" "passages")
-echo "Retrieving references..."
+
+DEBUG_LOG "Retrieving references..."
 REFERENCES=$(get_with_retry "plato --references '$URL' --lang '$LANG' $MODEL_FLAG" "No references available" "references")
-echo "Retrieving chapters..."
+
+DEBUG_LOG "Retrieving chapters..."
 CHAPTERS=$(get_with_retry "plato --chapters '$URL' --lang '$LANG' $MODEL_FLAG" "No chapters available" "chapters")
 
 # Sanitize outputs

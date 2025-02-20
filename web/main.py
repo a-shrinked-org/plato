@@ -218,41 +218,43 @@ async def reset(user_id: str = Depends(verify_token_and_get_user_id)):
 
     return {"message": "Session reset"}
 
-
 async def audio_to_paper(
-    url: str, lang: Language, output_dir: Path, user_id: str
-) -> tuple[str, str]:
-    # Get absolute path of current working directory
-    script_path = Path.cwd() / "examples" / "audio_to_paper.sh"
-    command = f'cd {output_dir} && {script_path} "{url}" --lang {lang} --verbose'
-
-    if user_id in processes:
-        raise RuntimeError("Conversion already in progress.")
-
-    process = await asyncio.create_subprocess_shell(
-        command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        shell=True,
-    )
-    processes[user_id] = process
-
-    try:
-        stdout, stderr = await process.communicate()
-    finally:
+        url: str, 
+        lang: Language, 
+        output_dir: Path, 
+        user_id: str,
+        model_flag: str = ""
+    ) -> tuple[str, str]:
+        script_path = Path.cwd() / "examples" / "audio_to_paper.sh"
+        command = f'cd {output_dir} && {script_path} "{url}" --lang {lang} --verbose {model_flag}'
+    
+        logfire.info(f"Executing command: {command}")
+    
         if user_id in processes:
-            del processes[user_id]
-
-    if process.returncode != 0:
-        raise RuntimeError(f"""Failed to execute {command} with return code {process.returncode}.
-
-stdout:
-{stdout.decode()}
-
-stderr:
-{stderr.decode()}""")
-
-    return stdout.decode(), stderr.decode()
+            raise RuntimeError("Conversion already in progress.")
+    
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            shell=True,
+        )
+        processes[user_id] = process
+    
+        try:
+            stdout, stderr = await process.communicate()
+        finally:
+            if user_id in processes:
+                del processes[user_id]
+    
+        if process.returncode != 0:
+            raise RuntimeError(f"""Failed to execute {command} with return code {process.returncode}.
+    stdout:
+    {stdout.decode()}
+    stderr:
+    {stderr.decode()}""")
+    
+        return stdout.decode(), stderr.decode()
 
 
 async def send_email(user_id: str, subj: str, body: str, files: list[Path]):
@@ -302,62 +304,87 @@ async def convert_and_send_with_error_handling(
 
 
 async def convert_and_send(request: ConversionRequest, user_id: str):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        if not (
-            request.payload.startswith("http")
-            or request.payload.startswith("file:///tmp/platogram_uploads")
-        ):
-            raise HTTPException(status_code=400, detail="Please provide a valid URL.")
-        else:
-            url = request.payload
-
-        try:
-            stdout, stderr = await audio_to_paper(
-                url, request.lang, Path(tmpdir), user_id
-            )
-        finally:
-            if request.payload.startswith("file:///tmp/platogram_uploads"):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                if not (
+                    request.payload.startswith("http")
+                    or request.payload.startswith("file:///tmp/platogram_uploads")
+                ):
+                    raise HTTPException(status_code=400, detail="Please provide a valid URL.")
+                else:
+                    url = request.payload
+        
+                # Configure model
+                model_flag = ""
+                if os.getenv("GOOGLE_CLOUD_PROJECT") and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+                    model_flag = "--model gemini"
+                    logfire.info("Using Gemini model")
+                elif os.getenv("ANTHROPIC_API_KEY"):
+                    model_flag = f"--anthropic-api-key {os.getenv('ANTHROPIC_API_KEY')}"
+                    logfire.info("Using Claude model")
+                else:
+                    raise RuntimeError("No model credentials configured")
+        
                 try:
-                    os.remove(
-                        request.payload.replace(
-                            "file:///tmp/platogram_uploads", "/tmp/platogram_uploads"
-                        )
+                    stdout, stderr = await audio_to_paper(
+                        url, 
+                        request.lang, 
+                        Path(tmpdir), 
+                        user_id,
+                        model_flag
                     )
-                except OSError as e:
-                    logfire.warning(
-                        f"Failed to delete temporary file {request.payload}: {e}"
-                    )
-
-        title_match = re.search(r"<title>(.*?)</title>", stdout, re.DOTALL)
-        if title_match:
-            title = title_match.group(1).strip()
-        else:
-            title = "👋"
-            logfire.warning("No title found in stdout, using default title")
-
-        abstract_match = re.search(r"<abstract>(.*?)</abstract>", stdout, re.DOTALL)
-        if abstract_match:
-            abstract = abstract_match.group(1).strip()
-        else:
-            abstract = ""
-            logfire.warning("No abstract found in stdout, using default abstract")
-
-        files = [f for f in Path(tmpdir).glob("*no-refs.pdf") if f.is_file()]
-
-        subject = f"[Platogram] {title}"
-        body = f"""Hi there!
-
-Platogram transformed spoken words into document you can read and enjoy, or attach to ChatGPT/Claude/etc and prompt!
-
-{abstract}
-
-Please reply to this e-mail if any suggestions, feedback, or questions.
-
----
-Support Platogram by donating here: https://buy.stripe.com/eVa29p3PK5OXbq84gl
-Suggested donation: $2 per hour of content converted."""
-
-        await send_email(user_id, subject, body, files)
+                finally:
+                    if request.payload.startswith("file:///tmp/platogram_uploads"):
+                        try:
+                            os.remove(
+                                request.payload.replace(
+                                    "file:///tmp/platogram_uploads", "/tmp/platogram_uploads"
+                                )
+                            )
+                        except OSError as e:
+                            logfire.warning(
+                                f"Failed to delete temporary file {request.payload}: {e}"
+                            )
+        
+                def sanitize_subject(text: str) -> str:
+                    """Sanitize email subject by removing debug output and newlines"""
+                    # Remove debug output
+                    clean = re.sub(r'\[DEBUG\].*?\n', '', text)
+                    # Remove other debug markers
+                    clean = re.sub(r'=== Debug:.*?===', '', clean)
+                    # Remove newlines and multiple spaces
+                    clean = " ".join(clean.split())
+                    return clean[:100]  # Truncate if too long
+        
+                title_match = re.search(r"<title>(.*?)</title>", stdout, re.DOTALL)
+                if title_match:
+                    title = sanitize_subject(title_match.group(1).strip())
+                else:
+                    title = "👋"
+                    logfire.warning("No title found in stdout, using default title")
+        
+                abstract_match = re.search(r"<abstract>(.*?)</abstract>", stdout, re.DOTALL)
+                if abstract_match:
+                    abstract = sanitize_subject(abstract_match.group(1).strip())
+                else:
+                    abstract = ""
+                    logfire.warning("No abstract found in stdout, using default abstract")
+        
+                files = [f for f in Path(tmpdir).glob("*no-refs.pdf") if f.is_file()]
+        
+                subject = f"[Platogram] {title}"
+                body = f"""Hi there!
+        
+        Platogram transformed spoken words into document you can read and enjoy, or attach to ChatGPT/Claude/etc and prompt!
+        
+        {abstract}
+        
+        Please reply to this e-mail if any suggestions, feedback, or questions.
+        
+        ---
+        Support Platogram by donating here: https://buy.stripe.com/eVa29p3PK5OXbq84gl
+        Suggested donation: $2 per hour of content converted."""
+        
+                await send_email(user_id, subject, body, files)
 
 
 def _send_email_sync(user_id: str, subj: str, body: str, files: list[Path]):
