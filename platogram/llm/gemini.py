@@ -5,10 +5,9 @@ import logging
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
-from google.genai import types
-from google.oauth2 import service_account
 from google.generativeai import GenerativeModel
 import google.generativeai as genai
+from google.oauth2 import service_account
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
@@ -20,11 +19,13 @@ class Model(LanguageModel):
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
-        # Configure the Gemini client
-        genai.configure(
-            api_key=key,  # Use provided key if available
-            credentials_path=os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        # Load credentials
+        credentials = service_account.Credentials.from_service_account_file(
+            os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         )
+        
+        # Configure the Gemini client
+        genai.configure(credentials=credentials)
         
         # Initialize the model
         self.model = GenerativeModel(model_name=model)
