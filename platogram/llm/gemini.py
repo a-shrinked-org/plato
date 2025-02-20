@@ -125,6 +125,8 @@ class Model:
 
     # (get_meta, get_chapters, get_paragraphs, prompt, render_context)
         
+    # Update to gemini.py
+    
     def get_meta(
         self,
         paragraphs: list[str],
@@ -136,70 +138,51 @@ class Model:
             lang = "en"
     
         system_prompt = {
-            "en": """You are a skilled academic editor analyzing content.
-    
-    Instructions:
+            "en": """<role>
+    You are a skilled academic editor analyzing content.
+    Your task is to extract a clear title and comprehensive summary.
+    </role>
+    <task>
     1. Study the provided text carefully
-    2. Extract a clear title and comprehensive summary
+    2. Extract a clear title and comprehensive summary that represents the full scope
     3. Use only information present in the text
-    4. Maintain academic style and formal tone
-    
-    Examples:
-    Input: Text about quantum computing advances and applications
-    Output: {
-        "title": "Quantum Computing: State of the Art and Future Applications",
-        "summary": "Comprehensive overview of quantum computing progress, covering current technological capabilities and projected applications in cryptography and simulation."
-    }
-    
-    Format Requirements:
-    - Title: Single line, descriptive, max 12 words
-    - Summary: 3-4 sentences, focused on key findings
-    - Use academic tone
-    - Reference only content from text
-    """,
-            "es": """Eres un editor académico experto analizando contenido.
-    
-    Instrucciones:
+    4. Output in a clean format without newlines or special characters
+    5. Keep titles concise (1-2 lines) and summaries comprehensive but focused
+    </task>""",
+            "es": """<role>
+    Eres un editor académico experto analizando contenido.
+    Tu tarea es extraer un título claro y un resumen completo.
+    </role>
+    <task>
     1. Estudia el texto proporcionado cuidadosamente
-    2. Extrae un título claro y un resumen completo
+    2. Extrae un título claro y un resumen completo que represente todo el alcance
     3. Usa solo información presente en el texto
-    4. Mantén estilo académico y tono formal
-    
-    Ejemplos:
-    Entrada: Texto sobre avances y aplicaciones de computación cuántica
-    Salida: {
-        "title": "Computación Cuántica: Estado del Arte y Aplicaciones Futuras",
-        "summary": "Visión comprensiva del progreso en computación cuántica, cubriendo capacidades tecnológicas actuales y aplicaciones proyectadas en criptografía y simulación."
-    }
-    
-    Requisitos de Formato:
-    - Título: Una línea, descriptivo, máximo 12 palabras
-    - Resumen: 3-4 oraciones, enfocado en hallazgos clave
-    - Usar tono académico
-    - Referenciar solo contenido del texto
-    """
+    4. Produce formato limpio sin saltos de línea o caracteres especiales
+    5. Mantén títulos concisos (1-2 líneas) y resúmenes completos pero enfocados
+    </task>"""
         }
     
-        text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
-        
+        # Update tool definition to match Anthropic's schema
         tool_definition = {
             "name": "render_content_info",
             "description": "Creates title and summary from content",
-            "parameters": {
+            "input_schema": {  # Changed from parameters to input_schema
                 "type": "object",
                 "properties": {
                     "title": {
                         "type": "string",
-                        "description": "Descriptive academic title"
+                        "description": "Concise, descriptive title without newlines"
                     },
                     "summary": {
                         "type": "string",
-                        "description": "Comprehensive academic summary"
+                        "description": "Comprehensive summary without newlines"
                     }
                 },
                 "required": ["title", "summary"]
             }
         }
+    
+        text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
     
         response = self.prompt_model(
             system=system_prompt[lang],
@@ -210,7 +193,18 @@ class Model:
         )
     
         if isinstance(response, dict):
-            return response.get("title", ""), response.get("summary", "")
+            # Clean and validate the response
+            title = response.get("title", "").replace("\n", " ").strip()
+            summary = response.get("summary", "").replace("\n", " ").strip()
+            
+            if not title or not summary:
+                raise ValueError("Missing title or summary in response")
+                
+            # Clean any potential control characters
+            title = "".join(char for char in title if char.isprintable())
+            summary = "".join(char for char in summary if char.isprintable())
+            
+            return title, summary
             
         raise ValueError(f"Expected dict response, got {type(response)}")
     
