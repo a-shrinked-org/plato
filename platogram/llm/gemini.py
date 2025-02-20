@@ -21,7 +21,10 @@ class Model(LanguageModel):
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
         # Configure the Gemini client
-        genai.configure(project_id=os.getenv('GOOGLE_CLOUD_PROJECT'))
+        genai.configure(
+            api_key=key,  # Use provided key if available
+            credentials_path=os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        )
         
         # Initialize the model
         self.model = GenerativeModel(model_name=model)
