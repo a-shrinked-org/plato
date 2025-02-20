@@ -304,34 +304,33 @@ async def convert_and_send_with_error_handling(
 
 
 async def convert_and_send(request: ConversionRequest, user_id: str):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                if not (
-                    request.payload.startswith("http")
-                    or request.payload.startswith("file:///tmp/platogram_uploads")
-                ):
-                    raise HTTPException(status_code=400, detail="Please provide a valid URL.")
-                else:
-                    url = request.payload
+        # Configure model first
+        model_flag = ""
+        if os.getenv("GOOGLE_CLOUD_PROJECT") and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            model_flag = "--model gemini"
+            logfire.info("Using Gemini model")
+        elif os.getenv("ANTHROPIC_API_KEY"):
+            model_flag = f"--anthropic-api-key {os.getenv('ANTHROPIC_API_KEY')}"
+            logfire.info("Using Claude model")
+        else:
+            raise RuntimeError("No model credentials configured")
         
-                # Configure model
-                model_flag = ""
-                if os.getenv("GOOGLE_CLOUD_PROJECT") and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-                    model_flag = "--model gemini"
-                    logfire.info("Using Gemini model")
-                elif os.getenv("ANTHROPIC_API_KEY"):
-                    model_flag = f"--anthropic-api-key {os.getenv('ANTHROPIC_API_KEY')}"
-                    logfire.info("Using Claude model")
-                else:
-                    raise RuntimeError("No model credentials configured")
-        
-                try:
-                    stdout, stderr = await audio_to_paper(
-                        url, 
-                        request.lang, 
-                        Path(tmpdir), 
-                        user_id,
-                        model_flag
-                    )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            if not (
+                request.payload.startswith("http")
+                or request.payload.startswith("file:///tmp/platogram_uploads")
+            ):
+                raise HTTPException(status_code=400, detail="Please provide a valid URL.")
+            
+            url = request.payload
+            try:
+                stdout, stderr = await audio_to_paper(
+                    url, 
+                    request.lang, 
+                    Path(tmpdir), 
+                    user_id,
+                    model_flag
+                )
                 finally:
                     if request.payload.startswith("file:///tmp/platogram_uploads"):
                         try:

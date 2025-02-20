@@ -78,25 +78,35 @@ def process_url(
     print(f"Language: {lang}")
     print("===================================")
 
-    # Always initialize ASR if we have the key
+    # Configure model first to fail fast if credentials are missing
+    if model_type == "gemini":
+        if not os.getenv("GOOGLE_CLOUD_PROJECT") or not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            raise ValueError("Missing Gemini credentials")
+    elif model_type == "anthropic" and not anthropic_api_key:
+        raise ValueError("Missing Anthropic API key")
+    
+    # Initialize ASR if needed
     asr = None
     if assemblyai_api_key:
         print("Debug: Initializing ASR with AssemblyAI")
         asr = plato.asr.get_model("assembly-ai/best", assemblyai_api_key)
     
-    # Extract transcript first
+    # Extract transcript
     print("Debug: Starting transcript extraction")
     try:
         transcript = plato.extract_transcript(url_or_file, asr, lang=lang)
     except ValueError as e:
         if "No subtitles found and no ASR model provided" in str(e):
-            print("Error: Audio file detected but no ASR key provided. Please set ASSEMBLYAI_API_KEY")
+            print("Error: Audio file detected but no ASR key provided")
             raise
         raise
-
-    # Initialize LLM after transcript
+    
+    # Initialize LLM only after successful transcript extraction
     print(f"Debug: Initializing LLM model: {model_type}")
-    llm = plato.llm.get_model(f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}", anthropic_api_key if model_type == "anthropic" else None)
+    llm = plato.llm.get_model(
+        f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}", 
+        anthropic_api_key if model_type == "anthropic" else None
+    )
     
     # Process content
     content = plato.index(transcript, llm, lang=lang)

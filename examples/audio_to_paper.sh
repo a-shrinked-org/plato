@@ -145,6 +145,35 @@ if [ -z "$URL" ]; then
 fi
 
 # Configure model-specific settings
+# Constants for status checking
+STATUS_TIMEOUT=300  # 5 minutes timeout
+MAX_STATUS_RETRIES=30
+INITIAL_RETRY_DELAY=2
+
+# Function to check processing status with timeout
+check_status_with_timeout() {
+    local start_time=$(date +%s)
+    local status_checked=false
+    local retry_count=0
+    
+    while ! $status_checked; do
+        if plato --status "$URL" $MODEL_FLAG 2>/dev/null | grep -q "complete"; then
+            status_checked=true
+            return 0
+        fi
+        
+        current_time=$(date +%s)
+        if ((current_time - start_time > STATUS_TIMEOUT)); then
+            echo "Error: Status check timed out after $STATUS_TIMEOUT seconds"
+            return 1
+        fi
+        
+        ((retry_count++))
+        sleep $INITIAL_RETRY_DELAY
+    done
+}
+
+# Model configuration and validation
 case "$MODEL" in
 "gemini")
     if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
@@ -156,6 +185,10 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--model gemini"
+    # Configure status checking for Gemini
+    STATUS_TIMEOUT=300
+    MAX_STATUS_RETRIES=30
+    INITIAL_RETRY_DELAY=2
     ;;
 "anthropic")
     if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -163,6 +196,10 @@ case "$MODEL" in
         exit 1
     fi
     MODEL_FLAG="--anthropic-api-key $ANTHROPIC_API_KEY"
+    # Configure status checking for Anthropic
+    STATUS_TIMEOUT=600  # Longer timeout for Anthropic
+    MAX_STATUS_RETRIES=40
+    INITIAL_RETRY_DELAY=3
     ;;
 *)
     echo "Error: Unsupported model: $MODEL"
@@ -170,6 +207,12 @@ case "$MODEL" in
     ;;
 esac
 
+# Log model configuration
+DEBUG_LOG "Model configuration:"
+DEBUG_LOG "  Model type: $MODEL"
+DEBUG_LOG "  Status timeout: ${STATUS_TIMEOUT}s"
+DEBUG_LOG "  Max retries: $MAX_STATUS_RETRIES"
+DEBUG_LOG "  Initial delay: ${INITIAL_RETRY_DELAY}s"
 # Log configuration
 {
     DEBUG_LOG "========= Configuration ========="
