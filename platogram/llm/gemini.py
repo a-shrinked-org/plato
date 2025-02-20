@@ -25,6 +25,7 @@ class Model:
         self.client = genai.Client(
             vertexai=True,
             project=os.getenv('GOOGLE_CLOUD_PROJECT'),
+            location="us-central1",
             credentials=credentials
         )
         
