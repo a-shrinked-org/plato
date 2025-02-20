@@ -14,7 +14,7 @@ from platogram.ops import render
 from platogram.types import Assistant, Content, User
 from platogram.llm import LanguageModel
 
-class Gemini(LanguageModel):
+class Model(LanguageModel):
     def __init__(self, model: str = "gemini-pro", key: str | None = None):
         super().__init__()
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
