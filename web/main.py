@@ -218,50 +218,70 @@ async def reset(user_id: str = Depends(verify_token_and_get_user_id)):
 
     return {"message": "Session reset"}
 
-async def audio_to_paper(url: str, lang: Language, output_dir: Path, user_id: str, model_flag: str = "") -> tuple[str, str]:
-    logfire.info("Starting transcription and content generation...")
+async def audio_to_paper(url: str, lang: str, output_dir: Path, user_id: str, model: str = "gemini"):
+    """
+    Processes an audio file into structured text using ASR and Gemini.
+    
+    - Runs Plato directly (like the CLI command).
+    - Streams logs in real-time to avoid frontend delays.
+    - Ensures background tasks are properly cleaned up.
+    """
+    
+    # Ensure only one process per user
+    if user_id in processes:
+        raise RuntimeError(f"Conversion already in progress for user: {user_id}")
+    
+    # Plato execution command (direct CLI execution)
+    command = (
+        f"cd {output_dir} && plato --model {model} --assemblyai-api-key {os.getenv('ASSEMBLYAI_API_KEY')} {url}"
+    )
+    
+    logfire.info(f"Starting audio processing: {command}")
+    
+    # Start subprocess (streaming logs in real-time)
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        shell=True,
+    )
+    
+    processes[user_id] = process
+    stdout_data = []
+    stderr_data = []
     
     try:
-        # Initialize model
-        if "gemini" in model_flag:
-            llm = plato.llm.get_model("gemini/gemini-2.0-flash-001")
-        else:
-            llm = plato.llm.get_model("anthropic/claude-3-5-sonnet", os.getenv("ANTHROPIC_API_KEY"))
+        while True:
+            # Read stdout line by line
+            line = await process.stdout.readline()
+            if not line:
+                break
+            decoded = line.decode().strip()
+            stdout_data.append(decoded)
+            logfire.info(f"Progress: {decoded}")
     
-        # Get ASR if needed
-        asr = None
-        if os.getenv("ASSEMBLYAI_API_KEY"):
-            asr = plato.asr.get_model("assembly-ai/best", os.getenv("ASSEMBLYAI_API_KEY"))
-            logfire.info("Using AssemblyAI for transcription")
+            # Read stderr line by line
+            err = await process.stderr.readline()
+            if err:
+                decoded_err = err.decode().strip()
+                stderr_data.append(decoded_err)
+                logfire.warning(f"Error: {decoded_err}")
     
-        # Extract transcript 
-        logfire.info("Starting transcript extraction...")
-        transcript = plato.extract_transcript(url, asr, lang=lang)
-        logfire.info("Transcript extracted")
-    
-        # Process content
-        logfire.info("Generating content...")
-        content = plato.index(transcript, llm, lang=lang)
+        # Wait for process to complete
+        await process.wait()
         
-        # Generate output files
-        logfile = Path(output_dir) / "output.md"
-        with open(logfile, "w") as f:
-            f.write(f'# {content.title}\n\n')
-            f.write(f'## Abstract\n\n{content.summary}\n\n')
-            # Write other content...
-            
-        logfire.info("Content generation complete")
-        
-        # Return verbose output for email
-        return (
-            f"<title>\n{content.title}\n</title>\n\n<abstract>\n{content.summary}\n</abstract>",
-            "" # No errors
-        )
+        if process.returncode != 0:
+            raise RuntimeError(f"Processing failed with code {process.returncode}")
     
-    except Exception as e:
-        logfire.error(f"Error in audio_to_paper: {str(e)}")
-        return "", str(e)
-        
+        logfire.info(f"Processing complete for {user_id}")
+    
+        return '\n'.join(stdout_data), '\n'.join(stderr_data)
+    
+    finally:
+        # Clean up finished process
+        if user_id in processes:
+            del processes[user_id}
+
 async def send_email(user_id: str, subj: str, body: str, files: list[Path]):
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor() as pool:
@@ -308,11 +328,18 @@ async def convert_and_send_with_error_handling(
         tasks[user_id].status = "failed"
 
 async def convert_and_send(request: ConversionRequest, user_id: str):
+            import re
+            import os
+            import tempfile
+            from pathlib import Path
+            from fastapi import HTTPException
+        
             def clean_output(text: str) -> str:
-                """Clean debug/download output from text"""
+                """Clean debug/download output from text and return a single-line result."""
                 text = re.sub(r'\[download\].*?\n', '', text)
                 text = re.sub(r'=== Debug:.*?===+\n', '', text, flags=re.DOTALL)
                 text = re.sub(r'Debug:.*?\n', '', text)
+                # This ensures no newlines or extra spaces remain
                 return ' '.join(text.strip().split())
         
             # Configure model first
@@ -322,7 +349,7 @@ async def convert_and_send(request: ConversionRequest, user_id: str):
                 logfire.info("Using Gemini model")
             elif os.getenv("ANTHROPIC_API_KEY"):
                 model_flag = f"--anthropic-api-key {os.getenv('ANTHROPIC_API_KEY')}"
-                logfire.info("Using Claude model") 
+                logfire.info("Using Claude model")
             else:
                 raise RuntimeError("No model credentials configured")
         
@@ -339,28 +366,29 @@ async def convert_and_send(request: ConversionRequest, user_id: str):
                         model_flag
                     )
         
-                    # Process title and abstract once
+                    # Process title and abstract
                     title_match = re.search(r"<title>(.*?)</title>", stdout, re.DOTALL)
                     title = clean_output(title_match.group(1).strip()) if title_match else "👋"
         
                     abstract_match = re.search(r"<abstract>(.*?)</abstract>", stdout, re.DOTALL)
                     abstract = clean_output(abstract_match.group(1).strip()) if abstract_match else ""
         
-                    files = [f for f in Path(tmpdir).glob("*no-refs.pdf") if f.is_file()]
+                    # Ensure subject does not contain any newline characters.
+                    subject = f"[Platogram] {title.replace(chr(10), ' ').replace(chr(13), ' ').strip()}"
         
-                    subject = f"[Platogram] {title}"
                     body = f"""Hi there!
         
-        Platogram transformed spoken words into document you can read and enjoy, or attach to ChatGPT/Claude/etc and prompt!
+        Platogram transformed spoken words into a document you can read and enjoy, or attach to ChatGPT/Claude/etc and prompt!
         
         {abstract}
         
-        Please reply to this e-mail if any suggestions, feedback, or questions.
+        Please reply to this e-mail if you have any suggestions, feedback, or questions.
         
         ---
         Support Platogram by donating here: https://buy.stripe.com/eVa29p3PK5OXbq84gl
         Suggested donation: $2 per hour of content converted."""
-        
+                    
+                    files = [f for f in Path(tmpdir).glob("*no-refs.pdf") if f.is_file()]
                     await send_email(user_id, subject, body, files)
         
                 finally:
