@@ -2,7 +2,6 @@ import os
 import re
 import time
 import logging
-import vertexai
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
@@ -10,13 +9,14 @@ from google.genai import types
 from google.oauth2 import service_account
 from google.generativeai import GenerativeModel
 import google.generativeai as genai
-from platogram.llm.base import LanguageModel
 
 from platogram.ops import render
 from platogram.types import Assistant, Content, User
+from platogram.llm import LanguageModel
 
 class Gemini(LanguageModel):
     def __init__(self, model: str = "gemini-pro", key: str | None = None):
+        super().__init__()
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
@@ -25,7 +25,13 @@ class Gemini(LanguageModel):
         
         # Initialize the model
         self.model = GenerativeModel(model_name=model)
+        self.model_name = model
         print(f"Debug: Using model: {model}")
+        
+        # Set retry parameters
+        self.max_retries = 3
+        self.base_wait_time = 2
+        self.last_request_time = 0
         
         # Authenticate
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
