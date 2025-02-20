@@ -190,7 +190,10 @@ def main():
     # Set language
     lang = args.lang if args.lang else "en"
     
-    # Validate Gemini requirements
+    # Get AssemblyAI key from environment if not provided in args
+    if not args.assemblyai_api_key:
+        args.assemblyai_api_key = os.getenv("ASSEMBLYAI_API_KEY")
+    
     if args.model == "gemini":
         if not os.getenv("GOOGLE_CLOUD_PROJECT"):
             print("Error: GOOGLE_CLOUD_PROJECT environment variable not set")
