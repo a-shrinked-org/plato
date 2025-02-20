@@ -223,16 +223,35 @@ def extract_transcript(
         list[SpeechEvent]: A list of SpeechEvent objects representing the slurped content.
     """
     with TemporaryDirectory() as temp_dir:
-        if url.lower().startswith("https://api.waffly"):
-            speech_events = parse_waffly(download_file(url, Path(temp_dir)))
-        elif asr_model is not None:
-            file = download_audio(url, Path(temp_dir))
-            speech_events = asr_model.transcribe(file, lang=lang)
-        elif has_subtitles(url):
-            speech_events = parse_subtitles(
-                download_subtitles(url, Path(temp_dir), lang=lang)
-            )
+    if url.lower().startswith("https://api.waffly"):
+        speech_events = parse_waffly(download_file(url, Path(temp_dir)))
+    elif asr_model is not None:
+        file = download_audio(url, Path(temp_dir))
+        
+        # Handle AssemblyAI transcription
+        if hasattr(asr_model, 'config'):  # Check if it's AssemblyAI Transcriber
+            # Language already set in config during initialization
+            transcript = asr_model.transcribe(file)
+            
+            # Convert AssemblyAI response to SpeechEvents
+            speech_events = []
+            for utterance in transcript.utterances:
+                speech_events.append(
+                    SpeechEvent(
+                        text=utterance.text,
+                        time_ms=int(utterance.start * 1000),  # Convert to ms
+                        duration_ms=int((utterance.end - utterance.start) * 1000)
+                    )
+                )
         else:
-            raise ValueError("No subtitles found and no ASR model provided.")
-
-        return speech_events
+            # Handle other ASR models that might use lang parameter
+            speech_events = asr_model.transcribe(file, lang=lang)
+            
+    elif has_subtitles(url):
+        speech_events = parse_subtitles(
+            download_subtitles(url, Path(temp_dir), lang=lang)
+        )
+    else:
+        raise ValueError("No subtitles found and no ASR model provided.")
+    
+    return sorted(speech_events, key=lambda x: x.time_ms)

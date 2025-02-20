@@ -94,8 +94,12 @@ def process_url(
         # Configure faster polling
         aai.settings.polling_interval = 1.0
         
+        # Convert language code to AssemblyAI format
+        aai_lang = "en" if lang == "en" else "es"
+        
+        # Configure transcriber with language
         config = aai.TranscriptionConfig(
-            language_code=lang if lang else "en"
+            language_code=aai_lang
         )
         asr = aai.Transcriber(config=config)
         asr.api_key = assemblyai_api_key
@@ -103,22 +107,16 @@ def process_url(
     # Extract transcript
     print("Debug: Starting transcript extraction")
     try:
-        transcript = plato.extract_transcript(url_or_file, asr, lang=lang)
-        
-        # Check ASR status if used
+        # Remove lang parameter when calling transcribe
         if asr:
-            client = aai.Client.get_default()
-            if client.last_response and client.last_response.status_code != 200:
-                print(f"Warning: ASR status code: {client.last_response.status_code}")
-                
+            transcript = plato.extract_transcript(url_or_file, asr)
+        else:
+            transcript = plato.extract_transcript(url_or_file, asr, lang=lang)
     except ValueError as e:
         if "No subtitles found and no ASR model provided" in str(e):
             print("Error: Audio file detected but no ASR key provided")
             raise
         raise
-    except aai.AssemblyAIError as e:
-        print(f"ASR Error: {str(e)}, Status code: {e.status_code}")
-        raise RuntimeError(f"ASR failed: {str(e)}")
     
     # Initialize LLM only after successful transcript extraction
     print(f"Debug: Initializing LLM model: {model_type}")
