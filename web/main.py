@@ -218,51 +218,50 @@ async def reset(user_id: str = Depends(verify_token_and_get_user_id)):
 
     return {"message": "Session reset"}
 
-async def audio_to_paper(url: str, lang: Language, output_dir: Path, user_id: str, model_flag: str = ""):
-    script_path = Path.cwd() / "examples" / "audio_to_paper.sh"
-    command = f'cd {output_dir} && {script_path} "{url}" --lang {lang} --verbose {model_flag}'
-    
-    logfire.info(f"Starting conversion: {command}")
-    
-    if user_id in processes:
-        raise RuntimeError("Conversion already in progress.")
-    
-    process = await asyncio.create_subprocess_shell(
-        command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        shell=True,
-    )
-    processes[user_id] = process
-    
-    stdout_data = []
-    stderr_data = []
+async def audio_to_paper(url: str, lang: Language, output_dir: Path, user_id: str, model_flag: str = "") -> tuple[str, str]:
+    logfire.info("Starting transcription and content generation...")
     
     try:
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            decoded = line.decode().strip()
-            stdout_data.append(decoded)
-            logfire.info(f"Progress: {decoded}")
-            
-            err = await process.stderr.readline()
-            if err:
-                decoded_err = err.decode().strip()
-                stderr_data.append(decoded_err)
-                logfire.warning(f"Error: {decoded_err}")
+        # Initialize model
+        if "gemini" in model_flag:
+            llm = plato.llm.get_model("gemini/gemini-2.0-flash-001")
+        else:
+            llm = plato.llm.get_model("anthropic/claude-3-5-sonnet", os.getenv("ANTHROPIC_API_KEY"))
+    
+        # Get ASR if needed
+        asr = None
+        if os.getenv("ASSEMBLYAI_API_KEY"):
+            asr = plato.asr.get_model("assembly-ai/best", os.getenv("ASSEMBLYAI_API_KEY"))
+            logfire.info("Using AssemblyAI for transcription")
+    
+        # Extract transcript 
+        logfire.info("Starting transcript extraction...")
+        transcript = plato.extract_transcript(url, asr, lang=lang)
+        logfire.info("Transcript extracted")
+    
+        # Process content
+        logfire.info("Generating content...")
+        content = plato.index(transcript, llm, lang=lang)
         
-        await process.wait()
-        
-        if process.returncode != 0:
-            raise RuntimeError(f"Process failed with code {process.returncode}")
+        # Generate output files
+        logfile = Path(output_dir) / "output.md"
+        with open(logfile, "w") as f:
+            f.write(f'# {content.title}\n\n')
+            f.write(f'## Abstract\n\n{content.summary}\n\n')
+            # Write other content...
             
-        return '\n'.join(stdout_data), '\n'.join(stderr_data)
-    finally:
-        if user_id in processes:
-            del processes[user_id]
-
+        logfire.info("Content generation complete")
+        
+        # Return verbose output for email
+        return (
+            f"<title>\n{content.title}\n</title>\n\n<abstract>\n{content.summary}\n</abstract>",
+            "" # No errors
+        )
+    
+    except Exception as e:
+        logfire.error(f"Error in audio_to_paper: {str(e)}")
+        return "", str(e)
+        
 async def send_email(user_id: str, subj: str, body: str, files: list[Path]):
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor() as pool:
