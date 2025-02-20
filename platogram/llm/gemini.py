@@ -707,3 +707,76 @@ Requisitos de Formato:
             return response.strip()
         
         raise ValueError(f"Expected string response, got {type(response)}")
+
+    def _process_response(self, response: dict) -> str:
+        """Safely process Gemini API response."""
+        try:
+            # Handle different response formats
+            if isinstance(response, dict):
+                # If it's a dictionary, try to get text content
+                return response.get('text', response.get('content', ''))
+            # If it's a response object, try different attributes
+            return getattr(response, 'text', getattr(response, 'content', str(response)))
+        except Exception as e:
+            print(f"Debug: Error processing response: {str(e)}")
+            print(f"Debug: Response type: {type(response)}")
+            print(f"Debug: Response content: {response}")
+            return str(response)
+
+    def get_paragraphs(
+        self, 
+        content: str, 
+        examples: dict[str, list[str]], 
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> list[str]:
+        """Get paragraphs using Gemini."""
+        try:
+            response = self.client.generate_content(content)
+            return [self._process_response(response)]
+        except Exception as e:
+            print(f"Debug: Error in get_paragraphs: {str(e)}")
+            return [content]
+
+    def get_meta(
+        self, 
+        paragraphs: list[str], 
+        lang: str | None = None
+    ) -> tuple[str, str]:
+        """Get metadata using Gemini."""
+        try:
+            content = "\n".join(paragraphs)
+            response = self.client.generate_content(
+                f"Generate a title and summary for this content:\n{content}"
+            )
+            result = self._process_response(response)
+            # Simple parsing of title and summary
+            title = result.split('\n')[0]
+            summary = '\n'.join(result.split('\n')[1:])
+            return title.strip(), summary.strip()
+        except Exception as e:
+            print(f"Debug: Error in get_meta: {str(e)}")
+            return "Generated Title", "Generated Summary"
+
+    def get_chapters(
+        self, 
+        paragraphs: list[str], 
+        lang: str | None = None
+    ) -> dict[int, str]:
+        """Get chapters using Gemini."""
+        try:
+            content = "\n".join(paragraphs)
+            response = self.client.generate_content(
+                f"Generate chapter titles for this content:\n{content}"
+            )
+            result = self._process_response(response)
+            # Simple chapter parsing
+            chapters = {}
+            for i, line in enumerate(result.split('\n')):
+                if line.strip():
+                    chapters[i] = line.strip()
+            return chapters if chapters else {0: "All Content"}
+        except Exception as e:
+            print(f"Debug: Error in get_chapters: {str(e)}")
+            return {0: "All Content"}
