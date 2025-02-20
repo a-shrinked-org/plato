@@ -23,10 +23,23 @@ trap 'handle_error ${LINENO}' ERR
 # Function to check status with timeout
 check_status_with_timeout() {
     local start_time=$(date +%s)
+    local status_checked=false
+    local retry_count=0
     
-    while true; do
-        if plato --status "$URL" $MODEL_FLAG | grep -q "complete"; then
-            return 0
+    while ! $status_checked; do
+        # Add ASR-specific status check
+        if [ ! -z "$ASSEMBLYAI_API_KEY" ]; then
+            if plato --status "$URL" --check-asr $MODEL_FLAG 2>/dev/null | grep -q "complete"; then
+                status_checked=true
+                return 0
+            fi
+            sleep 1  # Faster polling for ASR
+        else
+            if plato --status "$URL" $MODEL_FLAG 2>/dev/null | grep -q "complete"; then
+                status_checked=true
+                return 0
+            fi
+            sleep $INITIAL_RETRY_DELAY
         fi
         
         current_time=$(date +%s)
@@ -34,8 +47,6 @@ check_status_with_timeout() {
             echo "Error: Status check timed out after $STATUS_TIMEOUT seconds"
             return 1
         fi
-        
-        sleep 5
     done
 }
 
@@ -261,7 +272,8 @@ if [ -z "$ASSEMBLYAI_API_KEY" ]; then
     fi
 else
     echo "Transcribing audio to text using AssemblyAI..."
-    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" $MODEL_FLAG >/dev/null; then
+    # Add --fast-asr flag to indicate faster polling
+    if ! plato "$URL" ${IMAGES:+--images} --assemblyai-api-key "$ASSEMBLYAI_API_KEY" --lang "$LANG" $MODEL_FLAG --fast-asr >/dev/null; then
         echo "Error: Failed to transcribe audio"
         exit 1
     fi
@@ -277,7 +289,7 @@ echo "Fetching content..."
 
 # Get content with retries and sanitization
 DEBUG_LOG "Retrieving title..."
-TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG' $MODEL_FLAG" "Generated Title" "title")
+TITLE=$(get_with_retry "plato --title '$URL' --lang '$LANG' $MODEL_FLAG 2>/dev/null" "Generated Title" "title")
 DEBUG_LOG "Retrieved title: $TITLE"
 
 DEBUG_LOG "Retrieving abstract..."

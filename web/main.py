@@ -302,76 +302,49 @@ async def convert_and_send_with_error_handling(
         tasks[user_id].error = error
         tasks[user_id].status = "failed"
 
-
 async def convert_and_send(request: ConversionRequest, user_id: str):
-        # Configure model first
-        model_flag = ""
-        if os.getenv("GOOGLE_CLOUD_PROJECT") and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-            model_flag = "--model gemini"
-            logfire.info("Using Gemini model")
-        elif os.getenv("ANTHROPIC_API_KEY"):
-            model_flag = f"--anthropic-api-key {os.getenv('ANTHROPIC_API_KEY')}"
-            logfire.info("Using Claude model")
-        else:
-            raise RuntimeError("No model credentials configured")
+            def clean_output(text: str) -> str:
+                """Clean debug/download output from text"""
+                text = re.sub(r'\[download\].*?\n', '', text)
+                text = re.sub(r'=== Debug:.*?===+\n', '', text, flags=re.DOTALL)
+                text = re.sub(r'Debug:.*?\n', '', text)
+                return ' '.join(text.strip().split())
         
-        with tempfile.TemporaryDirectory() as tmpdir:
-            if not (
-                request.payload.startswith("http")
-                or request.payload.startswith("file:///tmp/platogram_uploads")
-            ):
-                raise HTTPException(status_code=400, detail="Please provide a valid URL.")
-            
-            url = request.payload
-            try:
-                stdout, stderr = await audio_to_paper(
-                    url, 
-                    request.lang, 
-                    Path(tmpdir), 
-                    user_id,
-                    model_flag
-                )
-                finally:
-                    if request.payload.startswith("file:///tmp/platogram_uploads"):
-                        try:
-                            os.remove(
-                                request.payload.replace(
-                                    "file:///tmp/platogram_uploads", "/tmp/platogram_uploads"
-                                )
-                            )
-                        except OSError as e:
-                            logfire.warning(
-                                f"Failed to delete temporary file {request.payload}: {e}"
-                            )
+            # Configure model first
+            model_flag = ""
+            if os.getenv("GOOGLE_CLOUD_PROJECT") and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+                model_flag = "--model gemini"
+                logfire.info("Using Gemini model")
+            elif os.getenv("ANTHROPIC_API_KEY"):
+                model_flag = f"--anthropic-api-key {os.getenv('ANTHROPIC_API_KEY')}"
+                logfire.info("Using Claude model") 
+            else:
+                raise RuntimeError("No model credentials configured")
         
-                def sanitize_subject(text: str) -> str:
-                    """Sanitize email subject by removing debug output and newlines"""
-                    # Remove debug output
-                    clean = re.sub(r'\[DEBUG\].*?\n', '', text)
-                    # Remove other debug markers
-                    clean = re.sub(r'=== Debug:.*?===', '', clean)
-                    # Remove newlines and multiple spaces
-                    clean = " ".join(clean.split())
-                    return clean[:100]  # Truncate if too long
+            with tempfile.TemporaryDirectory() as tmpdir:
+                if not request.payload.startswith(("http", "file:///tmp/platogram_uploads")):
+                    raise HTTPException(status_code=400, detail="Please provide a valid URL.")
         
-                title_match = re.search(r"<title>(.*?)</title>", stdout, re.DOTALL)
-                if title_match:
-                    title = sanitize_subject(title_match.group(1).strip())
-                else:
-                    title = "👋"
-                    logfire.warning("No title found in stdout, using default title")
+                try:
+                    stdout, stderr = await audio_to_paper(
+                        request.payload,
+                        request.lang,
+                        Path(tmpdir),
+                        user_id,
+                        model_flag
+                    )
         
-                abstract_match = re.search(r"<abstract>(.*?)</abstract>", stdout, re.DOTALL)
-                if abstract_match:
-                    abstract = sanitize_subject(abstract_match.group(1).strip())
-                else:
-                    abstract = ""
-                    logfire.warning("No abstract found in stdout, using default abstract")
+                    # Process title and abstract once
+                    title_match = re.search(r"<title>(.*?)</title>", stdout, re.DOTALL)
+                    title = clean_output(title_match.group(1).strip()) if title_match else "👋"
         
-                files = [f for f in Path(tmpdir).glob("*no-refs.pdf") if f.is_file()]
+                    abstract_match = re.search(r"<abstract>(.*?)</abstract>", stdout, re.DOTALL)
+                    abstract = clean_output(abstract_match.group(1).strip()) if abstract_match else ""
         
-                subject = f"[Platogram] {title}"
-                body = f"""Hi there!
+                    files = [f for f in Path(tmpdir).glob("*no-refs.pdf") if f.is_file()]
+        
+                    subject = f"[Platogram] {title}"
+                    body = f"""Hi there!
         
         Platogram transformed spoken words into document you can read and enjoy, or attach to ChatGPT/Claude/etc and prompt!
         
@@ -383,8 +356,14 @@ async def convert_and_send(request: ConversionRequest, user_id: str):
         Support Platogram by donating here: https://buy.stripe.com/eVa29p3PK5OXbq84gl
         Suggested donation: $2 per hour of content converted."""
         
-                await send_email(user_id, subject, body, files)
-
+                    await send_email(user_id, subject, body, files)
+        
+                finally:
+                    if request.payload.startswith("file:///tmp/platogram_uploads"):
+                        try:
+                            os.remove(request.payload.replace("file:///tmp/platogram_uploads", "/tmp/platogram_uploads"))
+                        except OSError as e:
+                            logfire.warning(f"Failed to delete temporary file {request.payload}: {e}")
 
 def _send_email_sync(user_id: str, subj: str, body: str, files: list[Path]):
     creds = get_gmail_service()
