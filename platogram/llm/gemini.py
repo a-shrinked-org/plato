@@ -16,9 +16,10 @@ class Model:
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
-        # Load credentials and create client
+        # Load credentials with proper scopes
         credentials = service_account.Credentials.from_service_account_file(
-            os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            os.getenv('GOOGLE_APPLICATION_CREDENTIALS'),
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
         )
         
         # Create client for Vertex AI
@@ -26,7 +27,8 @@ class Model:
             vertexai=True,
             project=os.getenv('GOOGLE_CLOUD_PROJECT'),
             location="us-central1",
-            credentials=credentials
+            credentials=credentials,
+            http_options=types.HttpOptions(api_version='v1')
         )
         
         self.model_name = model
