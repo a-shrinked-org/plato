@@ -1,7 +1,8 @@
 # In platogram/llm/gemini_structured.py
 
-from platogram.llm.gemini import Model
+import re
 import json
+from platogram.llm.gemini import Model
 
 class StructuredGemini(Model):
     def generate_structured_output(self, transcript: str):
