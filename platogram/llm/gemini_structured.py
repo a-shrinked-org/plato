@@ -2,10 +2,12 @@
 
 import re
 import json
+from typing import List
 from platogram.llm.gemini import Model
+from platogram.types import SpeechEvent
 
 class StructuredGemini(Model):
-    def generate_structured_output(self, transcript: str):
+    def generate_structured_output(self, transcript: List[SpeechEvent]):
         # System prompt with clear role and task definitions, similar to Sonnet setup
         system_prompt = """
         <role>
