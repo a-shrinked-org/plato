@@ -3,9 +3,10 @@ import mimetypes
 from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import os
 
-import requests  # type: ignore
-from yt_dlp import YoutubeDL  # type: ignore
+import requests
+from yt_dlp import YoutubeDL
 import subprocess
 
 from platogram.parsers import parse_subtitles, parse_waffly
@@ -13,9 +14,7 @@ from platogram.asr import ASRModel
 from platogram.types import SpeechEvent
 from platogram.utils import get_sha256_hash
 
-
 logger = logging.getLogger(__name__)
-
 
 @lru_cache(maxsize=None)
 def get_metadata(url: str) -> dict:
@@ -197,42 +196,43 @@ def extract_images(
     return image_paths
 
 
-def extract_transcript(
-    url: str, asr_model: ASRModel | None = None, lang: str | None = None
-) -> list[SpeechEvent]:
+def extract_transcript(url: str, asr_model: ASRModel | None = None, lang: str | None = None) -> list[SpeechEvent]:
     """
-    Slurps content from a given URL and returns a list of SpeechEvent objects.
-
-    This function can handle various types of content, including:
-    - Audio/video content
-    - YouTube videos
-    - Instagram posts
-    - Google Drive files
-
-    If the content has subtitles or requires transcription, it will be processed accordingly.
-
-    The returned SpeechEvent objects contain the following information:
-    - text: The transcribed or extracted text content
-    - start: The start time of the text segment in seconds
-    - end: The end time of the text segment in seconds
-
-    Args:
-        url (str): The URL of the content to slurp.
-
-    Returns:
-        list[SpeechEvent]: A list of SpeechEvent objects representing the slurped content.
+    Extracts transcript from a URL or local file. If a local text file is provided, parses it directly.
     """
     with TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+    
+        # Check if input is a local file
+        if not url.lower().startswith("http://") and not url.lower().startswith("https://") and os.path.exists(url):
+            # Assume it’s a text file with [timestamp_ms] text format
+            with open(url, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            speech_events = []
+            for line in lines:
+                line = line.strip()
+                if line.startswith('[') and 'ms]' in line:
+                    try:
+                        timestamp_str, text = line.split('ms]', 1)
+                        timestamp_ms = int(timestamp_str.strip('['))
+                        text = text.strip()
+                        speech_events.append(SpeechEvent(time_ms=timestamp_ms, text=text))
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"Failed to parse line in transcript file: {line} - {e}")
+            if speech_events:
+                return sorted(speech_events, key=lambda x: x.time_ms)
+            else:
+                raise ValueError(f"Could not parse transcript from local file: {url}")
+    
+        # Existing URL-based logic
         if url.lower().startswith("https://api.waffly"):
-            speech_events = parse_waffly(download_file(url, Path(temp_dir)))
+            speech_events = parse_waffly(download_file(url, temp_dir_path))
         elif asr_model is not None:
-            file = download_audio(url, Path(temp_dir))
+            file = download_audio(url, temp_dir_path)
             speech_events = asr_model.transcribe(file, lang=lang)
         elif has_subtitles(url):
-            speech_events = parse_subtitles(
-                download_subtitles(url, Path(temp_dir), lang=lang)
-            )
+            speech_events = parse_subtitles(download_subtitles(url, temp_dir_path, lang=lang))
         else:
             raise ValueError("No subtitles found and no ASR model provided.")
-        
+    
         return sorted(speech_events, key=lambda x: x.time_ms)
