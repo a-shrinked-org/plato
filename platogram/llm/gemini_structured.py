@@ -8,78 +8,117 @@ from platogram.types import SpeechEvent
 
 class StructuredGemini(Model):
     def generate_structured_output(self, transcript: List[SpeechEvent]):
-        # System prompt with clear role and task definitions, similar to Sonnet setup
-        system_prompt = """
-        <role>
-        You are a skilled academic editor analyzing content.
-        Your task is to extract a clear title, comprehensive abstract, and key passages from the transcript.
-        </role>
-        <task>
-        1. Study the provided transcript carefully.
-        2. Generate a concise title that captures the essence of the content.
-        3. Create a comprehensive abstract that summarizes the main points.
-        4. Identify and list the key passages that represent the core ideas.
-        5. Return the results in a JSON object with 'title', 'abstract', and 'passages' fields.
-        </task>
-        """
-
-        # Few-shot examples to guide the model
-        few_shot_examples = """
-        Example 1:
-        Transcript: "This is a sample transcript about quantum computing. It explains how quantum computers use quantum bits to perform calculations faster..."
-        Output: {
-            "title": "Introduction to Quantum Computing",
-            "abstract": "This transcript provides an overview of quantum computing, including its principles and applications.",
-            "passages": ["Quantum computing leverages quantum bits...", "It has the potential to revolutionize..."]
+    # System prompt with detailed role and task definitions
+    system_prompt = """
+    <role>
+    You are an academic editor analyzing a transcript to produce a structured document.
+    </role>
+    <task>
+    1. Analyze the transcript carefully, noting timestamps in [ms] format.
+    2. Generate a concise title that captures the essence of the content.
+    3. Write an abstract summarizing the main points.
+    4. Identify chapters with descriptive titles and their starting timestamps (e.g., 'Introduction [0ms]').
+    5. Extract key passages with timestamps (e.g., '[500ms] Text here').
+    6. List any references or citations mentioned in the transcript.
+    7. Return a JSON object with 'title' (str), 'abstract' (str), 'chapters' (dict of timestamp: title), 'passages' (list), and 'references' (list).
+    </task>
+    """
+    
+    # Few-shot examples with full structure
+    few_shot_examples = """
+    Example 1:
+    Input Transcript:
+    [0ms] This is a sample transcript about quantum computing. [500ms] It explains how quantum computers use quantum bits to perform calculations faster. [1000ms] Reference: Quantum Computing for Dummies.
+    
+    Output:
+    {
+        "title": "Introduction to Quantum Computing",
+        "abstract": "This transcript provides an overview of quantum computing, including its principles and applications.",
+        "chapters": {
+            "0": "Quantum Computing Basics",
+            "500": "Quantum Bits and Calculations"
+        },
+        "passages": [
+            "[0ms] This is a sample transcript about quantum computing.",
+            "[500ms] It explains how quantum computers use quantum bits to perform calculations faster."
+        ],
+        "references": ["Quantum Computing for Dummies"]
+    }
+    
+    Example 2:
+    Input Transcript:
+    [0ms] Discussion on AI ethics. [1000ms] The importance of unbiased algorithms. [1500ms] Reference: Ethics of Artificial Intelligence.
+    
+    Output:
+    {
+        "title": "Ethics in Artificial Intelligence",
+        "abstract": "This transcript explores the ethical considerations in AI development.",
+        "chapters": {
+            "0": "Introduction to AI Ethics",
+            "1000": "Algorithmic Bias"
+        },
+        "passages": [
+            "[0ms] Discussion on AI ethics.",
+            "[1000ms] The importance of unbiased algorithms."
+        ],
+        "references": ["Ethics of Artificial Intelligence"]
+    }
+    """
+    
+    # Convert transcript to string with timestamps
+    transcript_text = "\n".join(f"[{event.time_ms}ms] {event.text}" for event in transcript)
+    
+    # User prompt with prefixes and partial input completion
+    user_prompt = f"""
+    <examples>
+    {few_shot_examples}
+    </examples>
+    
+    <input>
+    Input Transcript:
+    {transcript_text}
+    </input>
+    
+    <output>
+    {
+        "title": "",
+        "abstract": "",
+        "chapters": {},
+        "passages": [],
+        "references": []
+    }
+    </output>
+    """
+    
+    # Call the model with the enhanced prompt
+    raw_output = self.prompt_model(
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+        max_tokens=4096,
+        temperature=0.2
+    )
+    try:
+        if isinstance(raw_output, str):
+            raw_output = re.sub(r'^```json\s*|\s*```$', '', raw_output, flags=re.MULTILINE).strip()
+            output = json.loads(raw_output)
+        else:
+            output = raw_output
+        return {
+            "title": output.get("title", "Generated Document"),
+            "abstract": output.get("abstract", "No summary available"),
+            "chapters": output.get("chapters", {}),
+            "passages": output.get("passages", []),
+            "references": output.get("references", [])
         }
-
-        Example 2:
-        Transcript: "Another transcript discussing artificial intelligence and its recent advancements in natural language processing..."
-        Output: {
-            "title": "Advancements in Artificial Intelligence",
-            "abstract": "This transcript explores recent developments in AI and their impact on various industries.",
-            "passages": ["AI has made significant strides in natural language processing...", "Ethical considerations are becoming increasingly important..."]
+    except Exception as e:
+        print(f"Error parsing Gemini output: {e}")
+        return {
+            "title": "Generated Document",
+            "abstract": transcript_text[:200] + "...",
+            "chapters": {},
+            "passages": [],
+            "references": []
         }
-        """
-
-        # User prompt combining few-shot examples and the transcript
-        user_prompt = f"""
-        {few_shot_examples}
-
-        Now, analyze the following transcript and generate the structured output as shown in the examples:
-
-        Transcript:
-        {transcript}
-        """
-
-        # Call the model with the enhanced prompt
-        raw_output = self.prompt_model(
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
-        try:
-            if isinstance(raw_output, dict):
-                return {
-                    "title": raw_output.get("title", "Generated Document"),
-                    "abstract": raw_output.get("abstract", "Transcript processed. (No structured output available)"),
-                    "passages": raw_output.get("passages", [])
-                }
-            # Strip backticks and parse JSON if returned as a string
-            if isinstance(raw_output, str):
-                raw_output = re.sub(r'^```json\s*|\s*```$', '', raw_output, flags=re.MULTILINE).strip()
-                output = json.loads(raw_output)
-                return {
-                    "title": output.get("title", "Generated Document"),
-                    "abstract": output.get("abstract", "Transcript processed. (No structured output available)"),
-                    "passages": output.get("passages", [])
-                }
-        except (json.JSONDecodeError, AttributeError) as e:
-            print(f"Error processing Gemini output: {e}")
-            return {
-                "title": "Generated Document",
-                "abstract": "Transcript processed. (Structured output not available with Gemini.)",
-                "passages": []
-            }
 
     def generate_content(self, prompt: str, url: str = None) -> str:
         """Wrapper method to maintain compatibility with previous interface"""
