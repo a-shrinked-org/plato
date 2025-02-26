@@ -58,13 +58,13 @@ def render_paragraph(p: str, render_reference_fn: Callable[[int], str]) -> str:
 def process_url(
     url_or_file: str,
     library: Library,
-    args,  # Added args parameter
+    args,  # Already added
     anthropic_api_key: str | None = None,
     assemblyai_api_key: str | None = None,
     model_type: str = "gemini",
     extract_images: bool = False,
     lang: str | None = None,
-) -> Content:
+) -> Content | str:  # Adjusted return type to allow str
     """Process a URL or file."""
     print("=== Debug: Process URL Configuration ===")
     print(f"URL: {url_or_file}")
@@ -107,11 +107,25 @@ def process_url(
         anthropic_api_key if model_type == "anthropic" else None
     )
     
-    if args.title or args.abstract or args.passages:
-        # Handle specific flags directly instead of indexing
-        return None  # Placeholder for now
+    # Handle specific flags directly
+    if args.title or args.abstract or args.passages or args.chapters or args.references:
+        transcript_text = "\n".join(f"[{event.time_ms}ms] {event.text}" for event in transcript)
+        if args.title:
+            title, _ = llm.get_meta([transcript_text], lang=lang)
+            return title.split('# ')[1].split('\n')[0]  # Return just the title
+        elif args.abstract:
+            _, abstract = llm.get_meta([transcript_text], lang=lang)
+            return abstract.split('## Abstract\n\n')[1]  # Return just the abstract
+        elif args.passages:
+            passages = llm.get_paragraphs(transcript_text, {}, lang=lang)
+            return "\n\n".join(passages)
+        elif args.chapters:
+            chapters = llm.get_chapters([transcript_text], lang=lang)
+            return "\n".join(f"**[00:{ms//60000:02d}:{(ms//1000)%60:02d}] {title}**" for ms, title in chapters.items())
+        elif args.references:
+            return "\n".join(f"{i+1}. [{format_time(event.time_ms)}] {event.text}" for i, event in enumerate(transcript))
     
-    # Process content
+    # Process full content if no specific flags
     content = plato.index(transcript, llm, lang=lang)
     
     if extract_images:
@@ -199,10 +213,8 @@ def main():
     
     args = parser.parse_args()
     
-    # Set language
     lang = args.lang if args.lang else "en"
     
-    # Get AssemblyAI key from environment if not provided in args
     if not args.assemblyai_api_key:
         args.assemblyai_api_key = os.getenv("ASSEMBLYAI_API_KEY")
     
@@ -214,7 +226,6 @@ def main():
             print("Error: GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
             sys.exit(1)
     
-    # Initialize library based on retrieval method
     if args.retrieval_method == "semantic":
         library = plato.library.get_semantic_local_chroma(CACHE_DIR)
     elif args.retrieval_method == "keyword":
@@ -224,7 +235,6 @@ def main():
     else:
         raise ValueError(f"Invalid retrieval method: {args.retrieval_method}")
     
-    # Get content context
     if not args.inputs:
         ids = library.ls()
         context = [library.get_content(id) for id in ids]
@@ -234,7 +244,7 @@ def main():
             process_url(
                 url_or_file,
                 library,
-                args,  # Pass args here
+                args,
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
                 args.model,
@@ -244,19 +254,15 @@ def main():
             for url_or_file in args.inputs
         ]
     
-    # Handle keyword retrieval
     if args.retrieval_method == "keyword":
         library.put(ids[0], context[0])
     
-    # Handle content retrieval
     if args.retrieve:
         n_results = int(args.retrieve)
         context, scores = library.retrieve(args.query, n_results, ids)
     
-    # Initialize result string
     result = ""
     
-    # Handle content generation
     if args.generate:
         if not args.query:
             raise ValueError("Query is required for generation")
@@ -274,26 +280,23 @@ def main():
                 anthropic_api_key=args.anthropic_api_key
             )}\n\n"""
     
-    # Process each content item
+    # Process each content item (check for NoneType before accessing attributes)
     for content in context:
-        # Handle images
+        if content is None:
+            continue  # Skip if content is None
         if args.images and content.images:
             images = "\n".join([str(image) for image in content.images])
             result += f"""{images}\n\n\n\n"""
     
-        # Handle origin URL
         if args.origin:
             result += f"""{content.origin}\n\n\n\n"""
     
-        # Handle title
         if args.title:
             result += f"""{content.title}\n\n\n\n"""
     
-        # Handle abstract
         if args.abstract:
             result += f"""{content.summary}\n\n\n\n"""
     
-        # Handle passages and chapters
         if args.passages:
             passages = ""
             if args.chapters:
@@ -307,27 +310,18 @@ def main():
                         current_chapter = chapter_marker
                     passages += f"{passage.strip()}\n\n"
             else:
-                passages = "\n\n".join(
-                    passage.strip() for passage in content.passages
-                )
+                passages = "\n\n".join(passage.strip() for passage in content.passages)
             result += f"""{passages}\n\n\n\n"""
     
-        # Handle chapters without passages
         if args.chapters and not args.passages:
-            chapters = "\n".join(
-                f"- {chapter} [{i}]" for i, chapter in content.chapters.items()
-            )
+            chapters = "\n".join(f"- {chapter} [{i}]" for i, chapter in content.chapters.items())
             result += f"""{chapters}\n\n\n\n"""
     
-        # Handle references
         if args.references:
             result += f"""{render_transcript(0, len(content.transcript), content.transcript, content.origin)}\n\n\n\n"""
     
-        # Handle inline references
         if args.inline_references:
-            render_reference_fn = lambda i: render_reference(
-                content.origin or "", content.transcript, i
-            )
+            render_reference_fn = lambda i: render_reference(content.origin or "", content.transcript, i)
         else:
             render_reference_fn = lambda _: ""
     
