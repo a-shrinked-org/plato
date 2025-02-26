@@ -2,6 +2,7 @@ import os
 import re
 import time
 import logging
+import json
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
@@ -80,7 +81,6 @@ class Model:
     
             # Handle structured output without explicit tools
             if "<role>" in contents[-1].parts[0].text and "<task>" in contents[-1].parts[0].text:
-                # Append instruction to return structured output
                 contents[-1].parts[0].text += (
                     "\n\nReturn the result as a JSON string with keys: 'title', 'summary', 'passages', 'chapters', 'references'."
                 )
