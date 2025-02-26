@@ -16,13 +16,11 @@ from platogram.utils import make_filesystem_safe
 
 CACHE_DIR = Path("./.platogram-cache")
 
-
 def format_time(ms):
     seconds = ms // 1000
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
 
 def render_reference(url: str, transcript: list[plato.SpeechEvent], i: int) -> str:
     link = f" [[{i+1}]](#ts-{i + 1})"
@@ -45,7 +43,6 @@ def render_transcript(first, last, transcript, url):
         ]
     )
 
-
 def render_paragraph(p: str, render_reference_fn: Callable[[int], str]) -> str:
     references = sorted([int(i) for i in re.findall(r"【(\d+)】", p)])
     if not references:
@@ -56,13 +53,12 @@ def render_paragraph(p: str, render_reference_fn: Callable[[int], str]) -> str:
         lambda match: render_reference_fn(int(match.group(1))),
         p,
     )
-
     return paragraph
-
 
 def process_url(
     url_or_file: str,
     library: Library,
+    args,  # Added args parameter
     anthropic_api_key: str | None = None,
     assemblyai_api_key: str | None = None,
     model_type: str = "gemini",
@@ -94,7 +90,6 @@ def process_url(
     # Extract transcript
     print("Debug: Starting transcript extraction")
     try:
-        # Remove lang parameter when calling transcribe
         if asr:
             transcript = plato.extract_transcript(url_or_file, asr)
         else:
@@ -113,8 +108,8 @@ def process_url(
     )
     
     if args.title or args.abstract or args.passages:
-    # Handle specific flags directly instead of indexing
-        return None  # Or fetch and return raw output (placeholder for now)
+        # Handle specific flags directly instead of indexing
+        return None  # Placeholder for now
     
     # Process content
     content = plato.index(transcript, llm, lang=lang)
@@ -128,23 +123,23 @@ def process_url(
         content.images = [str(image.relative_to(library.home)) for image in images]
     
     return content
-    
+
 def prompt_context(
-        context: list[Content],
-        prompt: Sequence[Assistant | User],
-        context_size: Literal["small", "medium", "large"],
-        model_type: str = "gemini",
-        anthropic_api_key: str | None = None,
-    ) -> str:
-        model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
-        llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
-        
-        response = llm.prompt(
-            prompt=prompt,
-            context=context,
-            context_size=context_size,
-        )
-        return response
+    context: list[Content],
+    prompt: Sequence[Assistant | User],
+    context_size: Literal["small", "medium", "large"],
+    model_type: str = "gemini",
+    anthropic_api_key: str | None = None,
+) -> str:
+    model_name = f"{model_type}/{'gemini-2.0-flash-001' if model_type == 'gemini' else 'claude-3-5-sonnet'}"
+    llm = plato.llm.get_model(model_name, anthropic_api_key if model_type == "anthropic" else None)
+    
+    response = llm.prompt(
+        prompt=prompt,
+        context=context,
+        context_size=context_size,
+    )
+    return response
 
 def is_uri(s):
     try:
@@ -152,7 +147,6 @@ def is_uri(s):
         return all([result.scheme, result.netloc, result.path])
     except:
         return False
-
 
 def main():
     parser = argparse.ArgumentParser(description="Platogram CLI")
@@ -240,6 +234,7 @@ def main():
             process_url(
                 url_or_file,
                 library,
+                args,  # Pass args here
                 args.anthropic_api_key,
                 args.assemblyai_api_key,
                 args.model,
@@ -339,7 +334,6 @@ def main():
         result = render_paragraph(result, render_reference_fn)
 
     print(result)
-
 
 if __name__ == "__main__":
     main()
