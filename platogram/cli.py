@@ -112,6 +112,10 @@ def process_url(
         anthropic_api_key if model_type == "anthropic" else None
     )
     
+    if args.title or args.abstract or args.passages:
+    # Handle specific flags directly instead of indexing
+    return None  # Or fetch and return raw output
+    
     # Process content
     content = plato.index(transcript, llm, lang=lang)
     
