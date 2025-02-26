@@ -65,7 +65,7 @@ def process_url(
     library: Library,
     anthropic_api_key: str | None = None,
     assemblyai_api_key: str | None = None,
-    model_type: str = "gemini",  # Default to gemini
+    model_type: str = "gemini",
     extract_images: bool = False,
     lang: str | None = None,
 ) -> Content:
@@ -77,7 +77,7 @@ def process_url(
     print(f"Credentials: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
     print(f"Language: {lang}")
     print("===================================")
-
+    
     # Configure model first to fail fast if credentials are missing
     if model_type == "gemini":
         if not os.getenv("GOOGLE_CLOUD_PROJECT") or not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
@@ -114,7 +114,7 @@ def process_url(
     
     if args.title or args.abstract or args.passages:
     # Handle specific flags directly instead of indexing
-    return None  # Or fetch and return raw output
+        return None  # Or fetch and return raw output (placeholder for now)
     
     # Process content
     content = plato.index(transcript, llm, lang=lang)
@@ -128,7 +128,7 @@ def process_url(
         content.images = [str(image.relative_to(library.home)) for image in images]
     
     return content
-
+    
 def prompt_context(
         context: list[Content],
         prompt: Sequence[Assistant | User],
