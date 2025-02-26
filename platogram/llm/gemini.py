@@ -2,7 +2,6 @@ import os
 import re
 import time
 import logging
-import json
 from typing import Any, Generator, Literal, Sequence
 
 from google import genai
@@ -17,13 +16,11 @@ class Model:
         print("Debug: Initializing Gemini with project:", os.getenv('GOOGLE_CLOUD_PROJECT'))
         print("Debug: Using credentials from:", os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
         
-        # Load credentials with proper scopes
         credentials = service_account.Credentials.from_service_account_file(
             os.getenv('GOOGLE_APPLICATION_CREDENTIALS'),
             scopes=['https://www.googleapis.com/auth/cloud-platform']
         )
         
-        # Create client for Vertex AI
         self.client = genai.Client(
             vertexai=True,
             project=os.getenv('GOOGLE_CLOUD_PROJECT'),
@@ -48,7 +45,6 @@ class Model:
         try:
             logger.info(f"Starting request with model: {self.model_name}")
             
-            # Convert messages to content format
             contents = []
             if system:
                 contents.append(types.Content(
@@ -71,7 +67,6 @@ class Model:
                     role=role
                 ))
     
-            # Configure generation
             config = types.GenerateContentConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
@@ -79,38 +74,21 @@ class Model:
                 top_k=40,
             )
     
-            # Handle structured output without explicit tools
-            if "<role>" in contents[-1].parts[0].text and "<task>" in contents[-1].parts[0].text:
-                contents[-1].parts[0].text += (
-                    "\n\nReturn the result as a JSON string with keys: 'title', 'summary', 'passages', 'chapters', 'references'."
-                )
-    
-            # Generate content
+            # Removed JSON instruction since we expect Markdown output with flags
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=contents,
                 config=config
             )
     
-            # Handle response
             response_text = response.text.strip()
-            try:
-                # Try parsing as JSON first
-                response_dict = json.loads(response_text)
-                if isinstance(response_dict, dict) and all(k in response_dict for k in ["title", "summary", "passages", "chapters", "references"]):
-                    return response_dict
-            except json.JSONDecodeError:
-                # Fallback to plain text if not JSON
-                return response_text
-    
-            return response_text
-    
+            return response_text  # Return Markdown directly
+            
         except Exception as e:
             logger.error(f"Error in prompt_model: {str(e)}")
             raise
 
     def count_tokens(self, text: str) -> int:
-        """Count tokens for a given text"""
         try:
             response = self.client.models.count_tokens(
                 model=self.model_name,
@@ -118,13 +96,8 @@ class Model:
             )
             return response.total_tokens
         except Exception as e:
-            # Fallback to rough estimation
             return len(text.split()) * 2
 
-    # (get_meta, get_chapters, get_paragraphs, prompt, render_context)
-        
-    # Update to gemini.py
-    
     def get_meta(
         self,
         paragraphs: list[str],
@@ -136,65 +109,27 @@ class Model:
             lang = "en"
     
         system_prompt = {
-            "en": """<role>
-    You are a skilled academic editor tasked with analyzing content to produce a clear title and comprehensive summary.
-    </role>
-    <task>
-    You will be given a <text> containing paragraphs enclosed in <p></p> tags. Follow these steps:
-    1. Study the <text> carefully to understand its main themes and insights.
-    2. Generate a concise title (1-2 lines) that captures the essence of the <text>, using only words from the <text>.
-    3. Create a comprehensive summary (3-5 sentences) that covers all key points from the <text>, using only words from the <text>.
-    4. Use the render_content_info tool to return the title and summary in a structured format.
-    </task>""".strip(),
-            "es": """<role>
-    Eres un editor académico experto encargado de analizar contenido para producir un título claro y un resumen completo.
-    </role>
-    <task>
-    Se te dará un <text> que contiene párrafos encerrados en etiquetas <p></p>. Sigue estos pasos:
-    1. Estudia el <text> cuidadosamente para entender sus temas principales e ideas.
-    2. Genera un título conciso (1-2 líneas) que capte la esencia del <text>, usando solo palabras del <text>.
-    3. Crea un resumen completo (3-5 oraciones) que cubra todos los puntos clave del <text>, usando solo palabras del <text>.
-    4. Usa la herramienta render_content_info para devolver el título y el resumen en un formato estructurado.
-    </task>""".strip(),
-        }
-    
-        tool_definition = {
-            "name": "render_content_info",
-            "description": "Renders a title and summary from the provided text.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "A concise, descriptive title without newlines"
-                    },
-                    "summary": {
-                        "type": "string",
-                        "description": "A comprehensive summary without newlines"
-                    }
-                },
-                "required": ["title", "summary"]
-            }
+            "en": """You are a skilled academic editor tasked with analyzing content to produce a clear title and comprehensive summary.
+Given the text, generate a concise title (1-2 lines) capturing the essence and a comprehensive summary (3-5 sentences) covering all key points, using only words from the text.
+Output in Markdown: `# Title\n\n## Abstract\n\nSummary`""".strip(),
+            "es": """Eres un editor académico experto encargado de analizar contenido para producir un título claro y un resumen completo.
+Dado el texto, genera un título conciso (1-2 líneas) que capte la esencia y un resumen completo (3-5 oraciones) que cubra todos los puntos clave, usando solo palabras del texto.
+Salida en Markdown: `# Título\n\n## Resumen\n\nResumen`""".strip(),
         }
     
         text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
-    
         response = self.prompt_model(
             system=system_prompt[lang],
-            messages=[User(content=f"<text>{text}</text>")],
-            tools=[tool_definition],
+            messages=[User(content=text)],
             max_tokens=max_tokens,
             temperature=temperature,
         )
     
-        if isinstance(response, dict):
-            title = response.get("title", "").replace("\n", " ").strip()
-            summary = response.get("summary", "").replace("\n", " ").strip()
-            if not title or not summary:
-                raise ValueError("Missing title or summary in response")
-            return title, summary
-    
-        raise ValueError(f"Expected dict response from tool, got {type(response)}")
+        title_match = re.search(r'# (.*?)\n', response, re.DOTALL)
+        summary_match = re.search(r'## (?:Abstract|Resumen)\n\n(.*?)$', response, re.DOTALL)
+        title = title_match.group(1).strip() if title_match else "Generated Document"
+        summary = summary_match.group(1).strip() if summary_match else ""
+        return title, summary
     
     def get_chapters(
         self,
@@ -208,103 +143,29 @@ class Model:
     
         system_prompt = {
             "en": """You are a skilled academic editor organizing content into logical chapters.
-    
-    Instructions:
-    1. Analyze the full text carefully
-    2. Identify major themes and topics
-    3. Create logical chapter divisions
-    4. Preserve all numerical markers
-    5. Maintain academic style
-    
-    Example:
-    Input: Text with markers about quantum computing:
-    "Basic principles of quantum states【0】. Qubits represent... Quantum gates enable operations【1】"
-    Output: {
-        "entities": [
-            {"title": "Quantum State Fundamentals", "marker": "【0】"},
-            {"title": "Quantum Gate Operations", "marker": "【1】"}
-        ]
-    }
-    
-    Format Requirements:
-    - Each chapter must have a clear, descriptive title
-    - Titles should be 3-7 words
-    - Preserve exact marker format: 【number】
-    - Markers must appear in sequence
-    - Maintain academic tone throughout""",
-    
+Analyze the text, identify major themes, and create logical chapter divisions with timestamps.
+Output in Markdown with each chapter as `**[timestamp] Title**` on a new line.""".strip(),
             "es": """Eres un editor académico experto organizando contenido en capítulos lógicos.
-    
-    Instrucciones:
-    1. Analiza el texto completo cuidadosamente
-    2. Identifica temas y tópicos principales
-    3. Crea divisiones lógicas de capítulos
-    4. Preserva todos los marcadores numéricos
-    5. Mantén estilo académico
-    
-    Ejemplo:
-    Entrada: Texto con marcadores sobre computación cuántica:
-    "Principios básicos de estados cuánticos【0】. Los qubits representan... Las puertas cuánticas permiten operaciones【1】"
-    Salida: {
-        "entities": [
-            {"title": "Fundamentos de Estados Cuánticos", "marker": "【0】"},
-            {"title": "Operaciones de Puertas Cuánticas", "marker": "【1】"}
-        ]
-    }
-    
-    Requisitos de Formato:
-    - Cada capítulo debe tener un título claro y descriptivo
-    - Títulos deben ser 3-7 palabras
-    - Preservar formato exacto de marcadores: 【número】
-    - Marcadores deben aparecer en secuencia
-    - Mantener tono académico"""
+Analiza el texto, identifica temas principales y crea divisiones de capítulos lógicos con marcas de tiempo.
+Salida en Markdown con cada capítulo como `**[marca de tiempo] Título**` en una nueva línea.""".strip(),
         }
     
         text = "\n".join([f"<p>{passage}</p>" for passage in passages])
-        
-        tool_definition = {
-            "name": "chapter_tool",
-            "description": "Creates structured chapters from content",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "entities": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "title": {
-                                    "type": "string",
-                                    "description": "Chapter title"
-                                },
-                                "marker": {
-                                    "type": "string",
-                                    "description": "Starting marker in format 【number】"
-                                }
-                            },
-                            "required": ["title", "marker"]
-                        }
-                    }
-                },
-                "required": ["entities"]
-            }
-        }
-    
         response = self.prompt_model(
             system=system_prompt[lang],
-            messages=[User(content=f"<passages>{text}</passages>")],
-            tools=[tool_definition],
+            messages=[User(content=text)],
             max_tokens=max_tokens,
             temperature=temperature,
         )
     
-        if isinstance(response, dict) and "entities" in response:
-            return {
-                int(re.findall(r"\d+", chapter["marker"])[0]): chapter["title"].strip()
-                for chapter in response["entities"]
-            }
-            
-        raise ValueError(f"Expected dict with entities, got {type(response)}")
+        chapters = {}
+        for line in response.split('\n'):
+            match = re.search(r'\*\*\[(.*?)\]\s+(.*?)\*\*', line)
+            if match:
+                timestamp = match.group(1)
+                title = match.group(2).strip()
+                chapters[timestamp] = title
+        return chapters
     
     def get_paragraphs(
         self,
@@ -319,57 +180,20 @@ class Model:
     
         system_prompt = {
             "en": """You are a skilled academic writer transforming text into well-structured paragraphs.
-    
-    Instructions:
-    1. Study the provided examples carefully
-    2. Transform text while preserving all markers
-    3. Create clear topic sentences
-    4. Use appropriate transitions
-    5. Maintain consistent academic style
-    
-    Example Format:
-    Input: "Quantum computing uses quantum bits【0】. These qubits allow... Superposition enables parallel processing【1】"
-    Output: "<p>The fundamental principle of quantum computing relies on quantum bits or qubits【0】. Through the phenomenon of superposition, these quantum systems enable unprecedented parallel processing capabilities【1】.</p>"
-    
-    Format Requirements:
-    - Each paragraph must have a clear topic sentence
-    - Use appropriate transitions between ideas
-    - Preserve exact marker format: 【number】
-    - Maintain markers in sequence
-    - Use formal academic tone
-    - Enclose each paragraph in <p>...</p> tags""",
-    
+Transform the text into clear, structured paragraphs, preserving all markers.
+Output in Markdown with each paragraph enclosed in `<p>...</p>` tags.""".strip(),
             "es": """Eres un escritor académico experto transformando texto en párrafos bien estructurados.
-    
-    Instrucciones:
-    1. Estudia los ejemplos proporcionados cuidadosamente
-    2. Transforma el texto preservando todos los marcadores
-    3. Crea oraciones temáticas claras
-    4. Usa transiciones apropiadas
-    5. Mantén estilo académico consistente
-    
-    Formato de Ejemplo:
-    Entrada: "La computación cuántica usa bits cuánticos【0】. Estos qubits permiten... La superposición permite procesamiento paralelo【1】"
-    Salida: "<p>El principio fundamental de la computación cuántica se basa en bits cuánticos o qubits【0】. A través del fenómeno de superposición, estos sistemas cuánticos permiten capacidades de procesamiento paralelo sin precedentes【1】.</p>"
-    
-    Requisitos de Formato:
-    - Cada párrafo debe tener una oración temática clara
-    - Usar transiciones apropiadas entre ideas
-    - Preservar formato exacto de marcadores: 【número】
-    - Mantener marcadores en secuencia
-    - Usar tono académico formal
-    - Encerrar cada párrafo en etiquetas <p>...</p>"""
+Transforma el texto en párrafos claros y estructurados, preservando todos los marcadores.
+Salida en Markdown con cada párrafo encerrado en etiquetas `<p>...</p>`.""".strip(),
         }
     
         messages = []
-        # Format examples
         for prompt, paragraphs in examples.items():
             formatted_response = "\n".join([f"<p>{p}</p>" for p in paragraphs])
             messages.extend([
                 {"role": "user", "content": f"Transform this text:\n{prompt}"},
                 {"role": "assistant", "content": formatted_response}
             ])
-    
         messages.append({"role": "user", "content": f"Transform this text:\n{text_with_markers}"})
     
         response = self.prompt_model(
@@ -378,8 +202,6 @@ class Model:
             temperature=temperature,
             system=system_prompt[lang]
         )
-    
-        assert isinstance(response, str)
         return re.findall(r"<p>(.*?)</p>", response, re.DOTALL)
     
     def render_context(
@@ -433,48 +255,9 @@ class Model:
     
         system_prompt = {
             "en": """You are a skilled academic researcher analyzing content and providing well-structured responses.
-    
-    Instructions:
-    1. Analyze all provided content carefully
-    2. Incorporate context appropriately
-    3. Structure response logically
-    4. Preserve all numerical markers
-    5. Maintain academic style
-    
-    Example:
-    Content: "Quantum theory introduction【0】. Wave-particle duality【1】"
-    Query: "Explain quantum mechanics basics"
-    Response: "The foundations of quantum mechanics begin with its core principles【0】. A central concept is wave-particle duality, which demonstrates the unique behavior of quantum systems【1】."
-    
-    Format Requirements:
-    - Use clear topic sentences
-    - Include appropriate transitions
-    - Preserve exact marker format: 【number】
-    - Maintain markers in sequence
-    - Use formal academic tone
-    - Reference context accurately""",
-    
+Analyze the context and prompt, then generate a response in Markdown format.""".strip(),
             "es": """Eres un investigador académico experto analizando contenido y proporcionando respuestas bien estructuradas.
-    
-    Instrucciones:
-    1. Analiza todo el contenido proporcionado cuidadosamente
-    2. Incorpora contexto apropiadamente
-    3. Estructura la respuesta lógicamente
-    4. Preserva todos los marcadores numéricos
-    5. Mantén estilo académico
-    
-    Ejemplo:
-    Contenido: "Introducción a la teoría cuántica【0】. Dualidad onda-partícula【1】"
-    Consulta: "Explica los fundamentos de la mecánica cuántica"
-    Respuesta: "Los fundamentos de la mecánica cuántica comienzan con sus principios básicos【0】. Un concepto central es la dualidad onda-partícula, que demuestra el comportamiento único de los sistemas cuánticos【1】."
-    
-    Requisitos de Formato:
-    - Usar oraciones temáticas claras
-    - Incluir transiciones apropiadas
-    - Preservar formato exacto de marcadores: 【número】
-    - Mantener marcadores en secuencia
-    - Usar tono académico formal
-    - Referenciar contexto con precisión"""
+Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown.""".strip(),
         }
     
         if isinstance(prompt, str):
@@ -490,8 +273,6 @@ class Model:
             system=system_prompt[lang],
             temperature=temperature,
         )
-        
-        assert isinstance(response, str)
         return response
 
     def get_contributors(
@@ -501,80 +282,32 @@ class Model:
         temperature: float = 0.5,
         lang: str | None = None,
     ) -> list[tuple[str, str, str]]:
-        """Extract contributors from content."""
-        logger = logging.getLogger('gemini')
         if not lang:
             lang = "en"
 
         system_prompt = {
             "en": """You are a skilled editor extracting contributor information.
-
-Instructions:
-1. Analyze the text carefully
-2. Identify all mentioned individuals
-3. Extract their names, roles, and organizations
-4. Only include explicitly stated information
-5. Use "Unknown" for missing information
-
-Format Requirements:
-- Name: Full name if available
-- Role: Professional title or role
-- Organization: Company or institution
-- Only include information present in text
-- Do not make assumptions""",
+Analyze the text and extract names, roles, and organizations in Markdown list format: `- Name, Role, Organization`.
+Use "Unknown" for missing info.""".strip(),
             "es": """Eres un editor experto extrayendo información de contribuyentes.
-
-Instructions:
-1. Analiza el texto cuidadosamente
-2. Identifica todas las personas mencionadas
-3. Extrae sus nombres, roles y organizaciones
-4. Solo incluye información explícitamente mencionada
-5. Usa "Desconocido" para información faltante
-
-Requisitos de Formato:
-- Nombre: Nombre completo si está disponible
-- Rol: Título profesional o rol
-- Organización: Compañía o institución
-- Solo incluir información presente en el texto
-- No hacer suposiciones"""
-        }
-
-        tool_definition = {
-            "name": "extract_contributors",
-            "description": "Extracts contributor information from text",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "contributors": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string"},
-                                "role": {"type": "string"},
-                                "organization": {"type": "string"}
-                            },
-                            "required": ["name", "role", "organization"]
-                        }
-                    }
-                },
-                "required": ["contributors"]
-            }
+Analiza el texto y extrae nombres, roles y organizaciones en formato de lista Markdown: `- Nombre, Rol, Organización`.
+Usa "Desconocido" para información faltante.""".strip(),
         }
 
         response = self.prompt_model(
             system=system_prompt[lang],
             messages=[User(content=f"<text>{text}</text>")],
-            tools=[tool_definition],
             max_tokens=max_tokens,
             temperature=temperature,
         )
 
-        if isinstance(response, dict) and "contributors" in response:
-            return [(c["name"], c["role"], c["organization"]) 
-                    for c in response["contributors"]]
-        
-        raise ValueError(f"Expected dict with contributors, got {response}")
+        contributors = []
+        for line in response.split('\n'):
+            if line.startswith('- '):
+                parts = line[2:].split(', ')
+                if len(parts) == 3:
+                    contributors.append((parts[0], parts[1], parts[2]))
+        return contributors
 
     def get_conclusion(
         self,
@@ -583,42 +316,14 @@ Requisitos de Formato:
         temperature: float = 0.5,
         lang: str | None = None,
     ) -> str:
-        """Generate conclusion from content."""
-        logger = logging.getLogger('gemini')
         if not lang:
             lang = "en"
 
         system_prompt = {
             "en": """You are a skilled academic editor creating conclusions.
-
-Instructions:
-1. Analyze the full text carefully
-2. Identify key findings and implications
-3. Summarize main points and their significance
-4. Maintain academic style
-5. Include relevant numerical markers
-
-Format Requirements:
-- 4-5 paragraphs
-- Include marker references [number]
-- Maintain formal tone
-- Focus on key insights
-- End with future implications""",
+Analyze the text and generate a conclusion in Markdown format with 4-5 paragraphs, including marker references [number].""".strip(),
             "es": """Eres un editor académico experto creando conclusiones.
-
-Instructions:
-1. Analiza el texto completo cuidadosamente
-2. Identifica hallazgos e implicaciones clave
-3. Resume puntos principales y su significado
-4. Mantén estilo académico
-5. Incluye marcadores numéricos relevantes
-
-Requisitos de Formato:
-- 4-5 párrafos
-- Incluir referencias de marcadores [número]
-- Mantener tono formal
-- Enfocarse en insights clave
-- Terminar con implicaciones futuras"""
+Analiza el texto y genera una conclusión en formato Markdown con 4-5 párrafos, incluyendo referencias de marcadores [número].""".strip(),
         }
 
         response = self.prompt_model(
@@ -627,8 +332,4 @@ Requisitos de Formato:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-
-        if isinstance(response, str):
-            return response.strip()
-        
-        raise ValueError(f"Expected string response, got {type(response)}")
+        return response.strip()
