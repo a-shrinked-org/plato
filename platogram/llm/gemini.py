@@ -139,43 +139,40 @@ class Model:
     
         system_prompt = {
             "en": """<role>
-    You are a skilled academic editor analyzing content.
-    Your task is to extract a clear title and comprehensive summary.
+    You are a skilled academic editor tasked with analyzing content to produce a clear title and comprehensive summary.
     </role>
     <task>
-    1. Study the provided text carefully
-    2. Extract a clear title and comprehensive summary that represents the full scope
-    3. Use only information present in the text
-    4. Output in a clean format without newlines or special characters
-    5. Keep titles concise (1-2 lines) and summaries comprehensive but focused
-    </task>""",
+    You will be given a <text> containing paragraphs enclosed in <p></p> tags. Follow these steps:
+    1. Study the <text> carefully to understand its main themes and insights.
+    2. Generate a concise title (1-2 lines) that captures the essence of the <text>, using only words from the <text>.
+    3. Create a comprehensive summary (3-5 sentences) that covers all key points from the <text>, using only words from the <text>.
+    4. Use the render_content_info tool to return the title and summary in a structured format.
+    </task>""".strip(),
             "es": """<role>
-    Eres un editor académico experto analizando contenido.
-    Tu tarea es extraer un título claro y un resumen completo.
+    Eres un editor académico experto encargado de analizar contenido para producir un título claro y un resumen completo.
     </role>
     <task>
-    1. Estudia el texto proporcionado cuidadosamente
-    2. Extrae un título claro y un resumen completo que represente todo el alcance
-    3. Usa solo información presente en el texto
-    4. Produce formato limpio sin saltos de línea o caracteres especiales
-    5. Mantén títulos concisos (1-2 líneas) y resúmenes completos pero enfocados
-    </task>"""
+    Se te dará un <text> que contiene párrafos encerrados en etiquetas <p></p>. Sigue estos pasos:
+    1. Estudia el <text> cuidadosamente para entender sus temas principales e ideas.
+    2. Genera un título conciso (1-2 líneas) que capte la esencia del <text>, usando solo palabras del <text>.
+    3. Crea un resumen completo (3-5 oraciones) que cubra todos los puntos clave del <text>, usando solo palabras del <text>.
+    4. Usa la herramienta render_content_info para devolver el título y el resumen en un formato estructurado.
+    </task>""".strip(),
         }
     
-        # Update tool definition to match Anthropic's schema
         tool_definition = {
             "name": "render_content_info",
-            "description": "Creates title and summary from content",
-            "input_schema": {  # Changed from parameters to input_schema
+            "description": "Renders a title and summary from the provided text.",
+            "input_schema": {
                 "type": "object",
                 "properties": {
                     "title": {
                         "type": "string",
-                        "description": "Concise, descriptive title without newlines"
+                        "description": "A concise, descriptive title without newlines"
                     },
                     "summary": {
                         "type": "string",
-                        "description": "Comprehensive summary without newlines"
+                        "description": "A comprehensive summary without newlines"
                     }
                 },
                 "required": ["title", "summary"]
@@ -193,20 +190,13 @@ class Model:
         )
     
         if isinstance(response, dict):
-            # Clean and validate the response
             title = response.get("title", "").replace("\n", " ").strip()
             summary = response.get("summary", "").replace("\n", " ").strip()
-            
             if not title or not summary:
                 raise ValueError("Missing title or summary in response")
-                
-            # Clean any potential control characters
-            title = "".join(char for char in title if char.isprintable())
-            summary = "".join(char for char in summary if char.isprintable())
-            
             return title, summary
-            
-        raise ValueError(f"Expected dict response, got {type(response)}")
+    
+        raise ValueError(f"Expected dict response from tool, got {type(response)}")
     
     def get_chapters(
         self,
