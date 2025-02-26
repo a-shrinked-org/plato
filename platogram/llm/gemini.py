@@ -69,7 +69,7 @@ class Model:
                     parts=[types.Part.from_text(text=str(content))],
                     role=role
                 ))
-
+    
             # Configure generation
             config = types.GenerateContentConfig(
                 temperature=temperature,
@@ -77,36 +77,34 @@ class Model:
                 top_p=0.95,
                 top_k=40,
             )
-
-            # Handle tools if provided
-            if tools:
-                function_declarations = []
-                for tool in tools:
-                    if "input_schema" in tool:
-                        function_declarations.append(types.FunctionDeclaration(
-                            name=tool["name"],
-                            description=tool["description"],
-                            parameters=tool["input_schema"]
-                        ))
-                    else:
-                        function_declarations.append(tool)
-                config.tools = [types.Tool(function_declarations=function_declarations)]
-
+    
+            # Handle structured output without explicit tools
+            if "<role>" in contents[-1].parts[0].text and "<task>" in contents[-1].parts[0].text:
+                # Append instruction to return structured output
+                contents[-1].parts[0].text += (
+                    "\n\nReturn the result as a JSON string with keys: 'title', 'summary', 'passages', 'chapters', 'references'."
+                )
+    
             # Generate content
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=contents,
                 config=config
             )
-
-            # Handle function calls in response
-            if response.candidates and response.candidates[0].content.parts[0].function_call:
-                return {
-                    k: v for k, v in response.candidates[0].content.parts[0].function_call.args.items()
-                }
-            
-            return response.text.strip()
-
+    
+            # Handle response
+            response_text = response.text.strip()
+            try:
+                # Try parsing as JSON first
+                response_dict = json.loads(response_text)
+                if isinstance(response_dict, dict) and all(k in response_dict for k in ["title", "summary", "passages", "chapters", "references"]):
+                    return response_dict
+            except json.JSONDecodeError:
+                # Fallback to plain text if not JSON
+                return response_text
+    
+            return response_text
+    
         except Exception as e:
             logger.error(f"Error in prompt_model: {str(e)}")
             raise
