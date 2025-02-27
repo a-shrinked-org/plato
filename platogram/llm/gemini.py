@@ -115,7 +115,9 @@ Dado el texto, genera un título conciso (1-2 líneas) que capte la esencia y un
 Salida en Markdown: `# Título\n\n## Resumen\n\nResumen`""".strip(),
         }
     
-        text = "\n".join([f"<p>{paragraph}</p>" for paragraph in paragraphs])
+        # Remove markers like 【0】
+        clean_paragraphs = [re.sub(r'【\d+】', '', p) for p in paragraphs]
+        text = "\n".join([f"<p>{p}</p>" for p in clean_paragraphs])
         response = self.prompt_model(
             system=system_prompt[lang],
             messages=[User(content=text)],
@@ -150,7 +152,9 @@ Por ejemplo, si un capítulo comienza en 1 minuto 30 segundos, usa 90000 miliseg
 Salida en Markdown con cada capítulo como `**[milisegundos] Título**` en una nueva línea.""".strip(),
         }
     
-        text = "\n".join([f"<p>{passage}</p>" for passage in passages])
+        # Remove markers like 【0】
+        clean_passages = [re.sub(r'【\d+】', '', p) for p in passages]
+        text = "\n".join([f"<p>{p}</p>" for p in clean_passages])
         response = self.prompt_model(
             system=system_prompt[lang],
             messages=[User(content=text)],
@@ -162,7 +166,7 @@ Salida en Markdown con cada capítulo como `**[milisegundos] Título**` en una n
         for line in response.split('\n'):
             match = re.search(r'\*\*\[(\d+)\]\s+(.*?)\*\*', line.strip())
             if match:
-                ms = int(match.group(1))  # Parse milliseconds as integer
+                ms = int(match.group(1))
                 title = match.group(2).strip()
                 chapters[ms] = title
         return chapters
@@ -180,11 +184,11 @@ Salida en Markdown con cada capítulo como `**[milisegundos] Título**` en una n
     
         system_prompt = {
             "en": """You are a skilled academic writer transforming speech transcripts into well-structured paragraphs.
-Given the text with timestamps like [milliseconds] and markers like 【number】, transform it into clear, structured paragraphs, preserving all markers and removing timestamps.
-Output in Markdown with each paragraph enclosed in `<p>...</p>` tags, with markers as 【number】.""".strip(),
+Given the text with timestamps like [milliseconds] and markers like 【number】, transform it into clear, structured paragraphs, preserving all markers as 【number】.
+Output in Markdown with each paragraph enclosed in `<p>...</p>` tags.""".strip(),
             "es": """Eres un escritor académico experto transformando transcripciones de discursos en párrafos bien estructurados.
-Dado el texto con marcas de tiempo como [milisegundos] y marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores y eliminando las marcas de tiempo.
-Salida en Markdown con cada párrafo encerrado en etiquetas `<p>...</p>`, con marcadores como 【número】.""".strip(),
+Dado el texto con marcas de tiempo como [milisegundos] y marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores como 【número】.
+Salida en Markdown con cada párrafo encerrado en etiquetas `<p>...</p>`.""".strip(),
         }
     
         messages = []
