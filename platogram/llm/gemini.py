@@ -97,127 +97,127 @@ class Model:
             return len(text.split()) * 2
 
     def get_meta(
-            self,
-            paragraphs: list[str],
-            max_tokens: int = 4096,
-            temperature: float = 0.5,
-            lang: str | None = None,
-        ) -> tuple[str, str]:
-            if not lang:
-                lang = "en"
+        self,
+        paragraphs: list[str],
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> tuple[str, str]:
+        if not lang:
+            lang = "en"
         
-            system_prompt = {
-                "en": """You are a skilled academic editor tasked with analyzing content to produce a clear title and comprehensive summary.
-    Given the text, generate a concise title (1-2 lines) capturing the essence and a comprehensive summary (3-5 sentences) covering all key points, using only words from the text.
-    Output strictly in Markdown starting with '## Title' followed by the title, then '## Abstract' followed by the summary.""".strip(),
-                "es": """Eres un editor académico experto encargado de analizar contenido para producir un título claro y un resumen completo.
-    Dado el texto, genera un título conciso (1-2 líneas) que capte la esencia y un resumen completo (3-5 oraciones) que cubra todos los puntos clave, usando solo palabras del texto.
-    Salida estrictamente en Markdown comenzando con '## Título' seguido del título, luego '## Resumen' seguido del resumen.""".strip(),
-            }
+        system_prompt = {
+            "en": """You are a skilled academic editor tasked with analyzing content to produce a clear title and comprehensive summary.
+            Given the text, generate a concise title (1-2 lines) capturing the essence and a comprehensive summary (3-5 sentences) covering all key points, using only words from the text.
+            Output strictly in Markdown starting with '## Title' followed by the title, then '## Abstract' followed by the summary.""".strip(),
+            "es": """Eres un editor académico experto encargado de analizar contenido para producir un título claro y un resumen completo.
+            Dado el texto, genera un título conciso (1-2 líneas) que capte la esencia y un resumen completo (3-5 oraciones) que cubra todos los puntos clave, usando solo palabras del texto.
+            Salida estrictamente en Markdown comenzando con '## Título' seguido del título, luego '## Resumen' seguido del resumen.""".strip(),
+        }
         
-            # Clean input: remove [ms] and 【number】
-            clean_paragraphs = [re.sub(r'\[\d+ms\]\s*', '', p) for p in paragraphs]
-            clean_paragraphs = [re.sub(r'【\d+】', '', p) for p in clean_paragraphs]
-            text = "\n".join([f"<p>{p}</p>" for p in clean_paragraphs])
-            response = self.prompt_model(
-                system=system_prompt[lang],
-                messages=[User(content=text)],
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
+        # Clean input: remove [ms] and 【number】
+        clean_paragraphs = [re.sub(r'\[\d+ms\]\s*', '', p) for p in paragraphs]
+        clean_paragraphs = [re.sub(r'【\d+】', '', p) for p in clean_paragraphs]
+        text = "\n".join([f"<p>{p}</p>" for p in clean_paragraphs])
+        response = self.prompt_model(
+            system=system_prompt[lang],
+            messages=[User(content=text)],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
         
-            # Clean and parse response
-            response = re.sub(r'\[\d+ms\]\s*', '', response)
-            title_match = re.search(r'## Title\n(.*?)(?:\n##|$)', response, re.DOTALL)
-            summary_match = re.search(r'## Abstract\n(.*?)$', response, re.DOTALL)
-            title = title_match.group(1).strip() if title_match else "Generated Document"
-            summary = summary_match.group(1).strip() if summary_match else "No summary generated."
-            return title, summary
+        # Clean and parse response
+        response = re.sub(r'\[\d+ms\]\s*', '', response)
+        title_match = re.search(r'## Title\n(.*?)(?:\n##|$)', response, re.DOTALL)
+        summary_match = re.search(r'## Abstract\n(.*?)$', response, re.DOTALL)
+        title = title_match.group(1).strip() if title_match else "Generated Document"
+        summary = summary_match.group(1).strip() if summary_match else "No summary generated."
+        return title, summary
+    
+    def get_chapters(
+        self,
+        passages: list[str],
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> dict[int, str]:
+        if not lang:
+            lang = "en"
         
-        def get_chapters(
-            self,
-            passages: list[str],
-            max_tokens: int = 4096,
-            temperature: float = 0.5,
-            lang: str | None = None,
-        ) -> dict[int, str]:
-            if not lang:
-                lang = "en"
+        system_prompt = {
+            "en": """You are a skilled academic editor organizing content into logical chapters.
+            Analyze the text, identify major themes, and create logical chapter divisions with timestamps in milliseconds (e.g., 90000 for 1 minute 30 seconds).
+            Output strictly in Markdown starting with '## Chapters', followed by each chapter as '**[milliseconds] Title**' on a new line.""".strip(),
+            "es": """Eres un editor académico experto organizando contenido en capítulos lógicos.
+            Analiza el texto, identifica temas principales y crea divisiones de capítulos lógicos con marcas de tiempo en milisegundos (por ejemplo, 90000 para 1 minuto 30 segundos).
+            Salida estrictamente en Markdown comenzando con '## Capítulos', seguido de cada capítulo como '**[milisegundos] Título**' en una nueva línea.""".strip(),
+        }
         
-            system_prompt = {
-                "en": """You are a skilled academic editor organizing content into logical chapters.
-    Analyze the text, identify major themes, and create logical chapter divisions with timestamps in milliseconds (e.g., 90000 for 1 minute 30 seconds).
-    Output strictly in Markdown starting with '## Chapters', followed by each chapter as '**[milliseconds] Title**' on a new line.""".strip(),
-                "es": """Eres un editor académico experto organizando contenido en capítulos lógicos.
-    Analiza el texto, identifica temas principales y crea divisiones de capítulos lógicos con marcas de tiempo en milisegundos (por ejemplo, 90000 para 1 minuto 30 segundos).
-    Salida estrictamente en Markdown comenzando con '## Capítulos', seguido de cada capítulo como '**[milisegundos] Título**' en una nueva línea.""".strip(),
-            }
+        # Clean input
+        clean_passages = [re.sub(r'\[\d+ms\]\s*', '', p) for p in passages]
+        clean_passages = [re.sub(r'【\d+】', '', p) for p in clean_passages]
+        text = "\n".join([f"<p>{p}</p>" for p in clean_passages])
+        response = self.prompt_model(
+            system=system_prompt[lang],
+            messages=[User(content=text)],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
         
-            # Clean input
-            clean_passages = [re.sub(r'\[\d+ms\]\s*', '', p) for p in passages]
-            clean_passages = [re.sub(r'【\d+】', '', p) for p in clean_passages]
-            text = "\n".join([f"<p>{p}</p>" for p in clean_passages])
-            response = self.prompt_model(
-                system=system_prompt[lang],
-                messages=[User(content=text)],
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
+        # Parse response
+        response = re.sub(r'\[\d+ms\]\s*', '', response)
+        chapters = {}
+        chapter_section = re.search(r'## Chapters\n(.*)', response, re.DOTALL)
+        if chapter_section:
+            for line in chapter_section.group(1).split('\n'):
+                match = re.search(r'\*\*\[(\d+)\]\s+(.*?)\*\*', line.strip())
+                if match:
+                    ms = int(match.group(1))
+                    title = match.group(2).strip()
+                    chapters[ms] = title
+        if not chapters:
+            chapters[0] = "Full Discussion"  # Fallback
+        return chapters
+    
+    def get_paragraphs(
+        self,
+        text_with_markers: str,
+        examples: dict[str, list[str]],
+        max_tokens: int = 4096,
+        temperature: float = 0.5,
+        lang: str | None = None,
+    ) -> list[str]:
+        if not lang:
+            lang = "en"
         
-            # Parse response
-            response = re.sub(r'\[\d+ms\]\s*', '', response)
-            chapters = {}
-            chapter_section = re.search(r'## Chapters\n(.*)', response, re.DOTALL)
-            if chapter_section:
-                for line in chapter_section.group(1).split('\n'):
-                    match = re.search(r'\*\*\[(\d+)\]\s+(.*?)\*\*', line.strip())
-                    if match:
-                        ms = int(match.group(1))
-                        title = match.group(2).strip()
-                        chapters[ms] = title
-            if not chapters:
-                chapters[0] = "Full Discussion"  # Fallback
-            return chapters
+        system_prompt = {
+            "en": """You are a skilled academic writer transforming speech transcripts into well-structured paragraphs.
+            Given the text with timestamps like [milliseconds] and markers like 【number】, transform it into clear, structured paragraphs, preserving all markers as [number].
+            Output strictly in Markdown starting with '## Passages', followed by each paragraph on a new line.""".strip(),
+            "es": """Eres un escritor académico experto transformando transcripciones de discursos en párrafos bien estructurados.
+            Dado el texto con marcas de tiempo como [milisegundos] y marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores como [número].
+            Salida estrictamente en Markdown comenzando con '## Pasajes', seguido de cada párrafo en una nueva línea.""".strip(),
+        }
         
-        def get_paragraphs(
-            self,
-            text_with_markers: str,
-            examples: dict[str, list[str]],
-            max_tokens: int = 4096,
-            temperature: float = 0.5,
-            lang: str | None = None,
-        ) -> list[str]:
-            if not lang:
-                lang = "en"
+        messages = []
+        for prompt, paragraphs in examples.items():
+            formatted_response = "## Passages\n" + "\n".join(paragraphs)
+            messages.extend([
+                {"role": "user", "content": f"Transform this text:\n{prompt}"},
+                {"role": "assistant", "content": formatted_response}
+            ])
+        messages.append({"role": "user", "content": f"Transform this text:\n{text_with_markers}"})
         
-            system_prompt = {
-                "en": """You are a skilled academic writer transforming speech transcripts into well-structured paragraphs.
-    Given the text with timestamps like [milliseconds] and markers like 【number】, transform it into clear, structured paragraphs, preserving all markers as [number].
-    Output strictly in Markdown starting with '## Passages', followed by each paragraph on a new line.""".strip(),
-                "es": """Eres un escritor académico experto transformando transcripciones de discursos en párrafos bien estructurados.
-    Dado el texto con marcas de tiempo como [milisegundos] y marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores como [número].
-    Salida estrictamente en Markdown comenzando con '## Pasajes', seguido de cada párrafo en una nueva línea.""".strip(),
-            }
-        
-            messages = []
-            for prompt, paragraphs in examples.items():
-                formatted_response = "## Passages\n" + "\n".join(paragraphs)
-                messages.extend([
-                    {"role": "user", "content": f"Transform this text:\n{prompt}"},
-                    {"role": "assistant", "content": formatted_response}
-                ])
-            messages.append({"role": "user", "content": f"Transform this text:\n{text_with_markers}"})
-        
-            response = self.prompt_model(
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt[lang]
-            )
-            response = re.sub(r'\[\d+ms\]\s*', '', response)
-            response = re.sub(r'【(\d+)】', r'[\1]', response)
-            passages_section = re.search(r'## Passages\n(.*)', response, re.DOTALL)
-            return passages_section.group(1).split('\n') if passages_section else [text_with_markers]
+        response = self.prompt_model(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system_prompt[lang]
+        )
+        response = re.sub(r'\[\d+ms\]\s*', '', response)
+        response = re.sub(r'【(\d+)】', r'[\1]', response)
+        passages_section = re.search(r'## Passages\n(.*)', response, re.DOTALL)
+        return passages_section.group(1).split('\n') if passages_section else [text_with_markers]
     
     def render_context(
         self, context: list[Content], context_size: Literal["small", "medium", "large"]
@@ -264,9 +264,9 @@ class Model:
     
         system_prompt = {
             "en": """You are a skilled academic researcher analyzing content and providing well-structured responses.
-Analyze the context and prompt, then generate a response in Markdown format, converting markers like 【number】 to [number] and removing timestamps like [milliseconds].""".strip(),
+            Analyze the context and prompt, then generate a response in Markdown format, converting markers like 【number】 to [number] and removing timestamps like [milliseconds].""".strip(),
             "es": """Eres un investigador académico experto analizando contenido y proporcionando respuestas bien estructuradas.
-Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown, convirtiendo marcadores como 【número】 a [número] y eliminando marcas de tiempo como [milisegundos].""".strip(),
+            Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown, convirtiendo marcadores como 【número】 a [número] y eliminando marcas de tiempo como [milisegundos].""".strip(),
         }
     
         if isinstance(prompt, str):
@@ -293,13 +293,13 @@ Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown,
 
         system_prompt = {
             "en": """You are a skilled editor extracting contributor information.
-Analyze the text and extract names, roles, and organizations in Markdown list format: `- Name, Role, Organization`.
-Use 'Unknown' for missing info and ensure '- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.' is always last.
-Start with '## Contributors, Acknowledgements, Mentions'.""".strip(),
+            Analyze the text and extract names, roles, and organizations in Markdown list format: `- Name, Role, Organization`.
+            Use 'Unknown' for missing info and ensure '- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.' is always last.
+            Start with '## Contributors, Acknowledgements, Mentions'.""".strip(),
             "es": """Eres un editor experto extrayendo información de contribuyentes.
-Analiza el texto y extrae nombres, roles y organizaciones en formato de lista Markdown: `- Nombre, Rol, Organización`.
-Usa 'Desconocido' para información faltante y asegura que '- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.' sea el último.
-Comienza con '## Contribuyentes, Agradecimientos, Menciones'.""".strip(),
+            Analiza el texto y extrae nombres, roles y organizaciones en formato de lista Markdown: `- Nombre, Rol, Organización`.
+            Usa 'Desconocido' para información faltante y asegura que '- [Platogram](https://github.com/code-anyway/platogram), Chief of Stuff, Code Anyway, Inc.' sea el último.
+            Comienza con '## Contribuyentes, Agradecimientos, Menciones'.""".strip(),
         }
 
         response = self.prompt_model(
@@ -329,11 +329,11 @@ Comienza con '## Contribuyentes, Agradecimientos, Menciones'.""".strip(),
 
         system_prompt = {
             "en": """You are a skilled academic editor creating conclusions.
-Analyze the text and generate a conclusion in Markdown format starting with '## Conclusion', using only words from the text.
-Include 4-5 paragraphs with marker references like [number], removing timestamps like [milliseconds].""".strip(),
+            Analyze the text and generate a conclusion in Markdown format starting with '## Conclusion', using only words from the text.
+            Include 4-5 paragraphs with marker references like [number], removing timestamps like [milliseconds].""".strip(),
             "es": """Eres un editor académico experto creando conclusiones.
-Analiza el texto y genera una conclusión en formato Markdown comenzando con '## Conclusión', usando solo palabras del texto.
-Incluye 4-5 párrafos con referencias de marcadores como [número], eliminando marcas de tiempo como [milisegundos].""".strip(),
+            Analiza el texto y genera una conclusión en formato Markdown comenzando con '## Conclusión', usando solo palabras del texto.
+            Incluye 4-5 párrafos con referencias de marcadores como [número], eliminando marcas de tiempo como [milisegundos].""".strip(),
         }
 
         response = self.prompt_model(
