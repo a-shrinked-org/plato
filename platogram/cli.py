@@ -271,31 +271,41 @@ def main():
         if args.prefill:
             prompt = [User(content=args.query), Assistant(content=args.prefill)]
         
-        result += f"""\n\n{
-            prompt_context(
-                context=context,
-                prompt=prompt,
-                context_size=args.context_size,
-                model_type=args.model,
-                anthropic_api_key=args.anthropic_api_key
-            )}\n\n"""
+        # Handle the case where prompt_context returns a string directly
+        generated_output = prompt_context(
+            context=context,
+            prompt=prompt,
+            context_size=args.context_size,
+            model_type=args.model,
+            anthropic_api_key=args.anthropic_api_key
+        )
+        result += f"\n\n{generated_output}\n\n"
     
-    # Process each content item (check for NoneType before accessing attributes)
-    for content in context:
-        if content is None:
-            continue  # Skip if content is None
+    # Process each item in context, handling both strings and Content objects
+    for item in context:
+        if item is None:
+            continue  # Skip if item is None
+    
+        if isinstance(item, str):
+            # If the item is a string (e.g., from --title or --abstract), use it directly
+            result += f"{item}\n\n\n\n"
+            continue  # Move to the next item after handling the string
+    
+        # If the item is a Content object, process its attributes
+        content = item
+        
         if args.images and content.images:
             images = "\n".join([str(image) for image in content.images])
-            result += f"""{images}\n\n\n\n"""
+            result += f"{images}\n\n\n\n"
     
         if args.origin:
-            result += f"""{content.origin}\n\n\n\n"""
+            result += f"{content.origin}\n\n\n\n"
     
         if args.title:
-            result += f"""{content.title}\n\n\n\n"""
+            result += f"{content.title}\n\n\n\n"
     
         if args.abstract:
-            result += f"""{content.summary}\n\n\n\n"""
+            result += f"{content.summary}\n\n\n\n"
     
         if args.passages:
             passages = ""
@@ -311,14 +321,14 @@ def main():
                     passages += f"{passage.strip()}\n\n"
             else:
                 passages = "\n\n".join(passage.strip() for passage in content.passages)
-            result += f"""{passages}\n\n\n\n"""
+            result += f"{passages}\n\n\n\n"
     
         if args.chapters and not args.passages:
             chapters = "\n".join(f"- {chapter} [{i}]" for i, chapter in content.chapters.items())
-            result += f"""{chapters}\n\n\n\n"""
+            result += f"{chapters}\n\n\n\n"
     
         if args.references:
-            result += f"""{render_transcript(0, len(content.transcript), content.transcript, content.origin)}\n\n\n\n"""
+            result += f"{render_transcript(0, len(content.transcript), content.transcript, content.origin)}\n\n\n\n"
     
         if args.inline_references:
             render_reference_fn = lambda i: render_reference(content.origin or "", content.transcript, i)
@@ -326,8 +336,8 @@ def main():
             render_reference_fn = lambda _: ""
     
         result = render_paragraph(result, render_reference_fn)
-
-    print(result)
+    
+    print(result.strip())  # Strip trailing whitespace for cleaner output
 
 if __name__ == "__main__":
     main()
