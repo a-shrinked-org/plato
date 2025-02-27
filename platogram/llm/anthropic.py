@@ -9,6 +9,7 @@ from tenacity import (
     retry_if_exception_type,
     stop_after_attempt,
     stop_after_delay,
+    wait_exponential,
 )
 
 from platogram.ops import render
@@ -16,6 +17,7 @@ from platogram.types import Assistant, Content, User
 
 RETRY = retry(
     stop=(stop_after_delay(300) | stop_after_attempt(5)),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(AnthropicError),
 )
 
