@@ -121,7 +121,7 @@ def process_url(
             return "\n\n".join(passages)
         elif args.chapters:
             chapters = llm.get_chapters([transcript_text], lang=lang)
-            return "\n".join(f"**[{ms}] {title}**" for ms, title in chapters.items())  # Use raw ms
+            return "\n".join(f"• {title} [{i}]" for i, (ms, title) in enumerate(chapters.items()))  # Use raw ms
         elif args.references:
             return "\n".join(f"{i+1}. [{format_time(event.time_ms)}] {event.text}" for i, event in enumerate(transcript))
     
