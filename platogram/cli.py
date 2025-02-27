@@ -112,16 +112,16 @@ def process_url(
         transcript_text = "\n".join(f"[{event.time_ms}ms] {event.text}" for event in transcript)
         if args.title:
             title, _ = llm.get_meta([transcript_text], lang=lang)
-            return title.split('# ')[1].split('\n')[0]  # Return just the title
+            return title  # Just the title text
         elif args.abstract:
             _, abstract = llm.get_meta([transcript_text], lang=lang)
-            return abstract.split('## Abstract\n\n')[1]  # Return just the abstract
+            return abstract  # Just the abstract text
         elif args.passages:
             passages = llm.get_paragraphs(transcript_text, {}, lang=lang)
             return "\n\n".join(passages)
         elif args.chapters:
             chapters = llm.get_chapters([transcript_text], lang=lang)
-            return "\n".join(f"**[00:{ms//60000:02d}:{(ms//1000)%60:02d}] {title}**" for ms, title in chapters.items())
+            return "\n".join(f"**[{ms_to_timecode(ms)}] {title}**" for ms, title in chapters.items())
         elif args.references:
             return "\n".join(f"{i+1}. [{format_time(event.time_ms)}] {event.text}" for i, event in enumerate(transcript))
     
