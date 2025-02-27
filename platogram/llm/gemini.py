@@ -180,11 +180,11 @@ Salida en Markdown con cada capítulo como `**[milisegundos] Título**` en una n
     
         system_prompt = {
             "en": """You are a skilled academic writer transforming speech transcripts into well-structured paragraphs.
-Given the text with markers like 【number】, transform it into clear, structured paragraphs, preserving all markers.
-Output in Markdown with each paragraph enclosed in `<p>...</p>` tags, ensuring markers remain as 【number】.""".strip(),
+Given the text with timestamps like [milliseconds] and markers like 【number】, transform it into clear, structured paragraphs, preserving all markers and removing timestamps.
+Output in Markdown with each paragraph enclosed in `<p>...</p>` tags, with markers as 【number】.""".strip(),
             "es": """Eres un escritor académico experto transformando transcripciones de discursos en párrafos bien estructurados.
-Dado el texto con marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores.
-Salida en Markdown con cada párrafo encerrado en etiquetas `<p>...</p>`, asegurando que los marcadores permanezcan como 【número】.""".strip(),
+Dado el texto con marcas de tiempo como [milisegundos] y marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores y eliminando las marcas de tiempo.
+Salida en Markdown con cada párrafo encerrado en etiquetas `<p>...</p>`, con marcadores como 【número】.""".strip(),
         }
     
         messages = []
@@ -249,9 +249,9 @@ Salida en Markdown con cada párrafo encerrado en etiquetas `<p>...</p>`, asegur
     
         system_prompt = {
             "en": """You are a skilled academic researcher analyzing content and providing well-structured responses.
-Analyze the context and prompt, then generate a response in Markdown format, preserving markers like 【number】 as [number].""".strip(),
+Analyze the context and prompt, then generate a response in Markdown format, converting markers like 【number】 to [number] and removing timestamps like [milliseconds].""".strip(),
             "es": """Eres un investigador académico experto analizando contenido y proporcionando respuestas bien estructuradas.
-Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown, preservando marcadores como 【número】 como [número].""".strip(),
+Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown, convirtiendo marcadores como 【número】 a [número] y eliminando marcas de tiempo como [milisegundos].""".strip(),
         }
     
         if isinstance(prompt, str):
@@ -263,7 +263,8 @@ Analiza el contexto y el prompt, luego genera una respuesta en formato Markdown,
             system=system_prompt[lang],
             temperature=temperature,
         )
-        return re.sub(r'【(\d+)】', r'[\1]', response)  # Convert 【number】 to [number] in final response
+        response = re.sub(r'\[\d+ms\]\s*', '', response)  # Remove timestamps
+        return re.sub(r'【(\d+)】', r'[\1]', response)  # Convert 【number】 to [number]
 
     def get_contributors(
         self,
@@ -314,10 +315,10 @@ Comienza con '## Contribuyentes, Agradecimientos, Menciones'.""".strip(),
         system_prompt = {
             "en": """You are a skilled academic editor creating conclusions.
 Analyze the text and generate a conclusion in Markdown format starting with '## Conclusion', using only words from the text.
-Include 4-5 paragraphs with marker references like [number].""".strip(),
+Include 4-5 paragraphs with marker references like [number], removing timestamps like [milliseconds].""".strip(),
             "es": """Eres un editor académico experto creando conclusiones.
 Analiza el texto y genera una conclusión en formato Markdown comenzando con '## Conclusión', usando solo palabras del texto.
-Incluye 4-5 párrafos con referencias de marcadores como [número].""".strip(),
+Incluye 4-5 párrafos con referencias de marcadores como [número], eliminando marcas de tiempo como [milisegundos].""".strip(),
         }
 
         response = self.prompt_model(
@@ -326,4 +327,5 @@ Incluye 4-5 párrafos con referencias de marcadores como [número].""".strip(),
             max_tokens=max_tokens,
             temperature=temperature,
         )
+        response = re.sub(r'\[\d+ms\]\s*', '', response)  # Remove timestamps
         return response.strip()
