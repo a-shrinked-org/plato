@@ -8,6 +8,7 @@ from google.genai import types
 from google.oauth2 import service_account
 
 from platogram.ops import render
+from platogram.ops import rewrite_examples
 from platogram.types import Assistant, Content, User
 
 class Model:
@@ -182,7 +183,7 @@ class Model:
     def get_paragraphs(
         self,
         text_with_markers: str,
-        examples: dict[str, list[str]],
+        examples: dict[str, list[str]] = None,
         max_tokens: int = 4096,
         temperature: float = 0.5,
         lang: str | None = None,
@@ -193,11 +194,26 @@ class Model:
         system_prompt = {
             "en": """You are a skilled academic writer transforming speech transcripts into well-structured paragraphs.
             Given the text with timestamps like [milliseconds] and markers like 【number】, transform it into clear, structured paragraphs, preserving all markers as [number].
-            Output strictly in Markdown starting with '## Passages', followed by each paragraph on a new line.""".strip(),
+            Output strictly in Markdown starting with '## Passages', followed by each paragraph on a new line.
+            If examples are provided in the message history, use them to guide the style and structure of the output.""".strip(),
             "es": """Eres un escritor académico experto transformando transcripciones de discursos en párrafos bien estructurados.
             Dado el texto con marcas de tiempo como [milisegundos] y marcadores como 【número】, transfórmalo en párrafos claros y estructurados, preservando todos los marcadores como [número].
-            Salida estrictamente en Markdown comenzando con '## Pasajes', seguido de cada párrafo en una nueva línea.""".strip(),
+            Salida estrictamente en Markdown comenzando con '## Pasajes', seguido de cada párrafo en una nueva línea.
+            Si se proporcionan ejemplos en el historial de mensajes, úsalos para guiar el estilo y la estructura de la salida.""".strip(),
         }
+        
+        logger = logging.getLogger('gemini')
+        
+        # Use rewrite_examples if no examples provided
+        if examples is None:
+            if lang in rewrite_examples:
+                examples = {str(example["input"]): list(example["output"]) for example in rewrite_examples[lang]}
+                logger.info(f"Using {len(examples)} default examples from rewrite_examples for language '{lang}'")
+            else:
+                examples = {}
+                logger.warning(f"No examples available in rewrite_examples for language '{lang}'")
+        else:
+            logger.info(f"Using {len(examples)} provided examples for language '{lang}'")
         
         messages = []
         for prompt, paragraphs in examples.items():
