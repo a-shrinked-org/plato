@@ -3,6 +3,7 @@ import re
 from typing import Any, Generator, Literal, Sequence
 
 import anthropic
+import logging
 from anthropic import AnthropicError
 from tenacity import (
     retry,
@@ -339,9 +340,15 @@ Siga estos pasos para reescribir el <transcript> y mantener cada <marker>:
         example_messages: list[User | Assistant] = []
         for prompt, response in format_examples():
             example_messages.append(User(content=f"<transcript>{prompt}</transcript>"))
-            example_messages.append(
-                Assistant(content=f"<paragraphs>{response}</paragraphs>")
-            )
+            example_messages.append(Assistant(content=f"<paragraphs>{response}</paragraphs>"))
+        if example_messages:  # Add safeguard
+            example_messages[-1].cache = True
+        else:
+            print(f"Warning: No examples found for language '{lang}'")
+        
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        logger.info(f"Using {len(examples)} examples for lang {lang}")
 
         # This will effectively cache the entire prefix with examples.
         # https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching#can-i-use-prompt-caching-at-the-same-time-as-other-betas
